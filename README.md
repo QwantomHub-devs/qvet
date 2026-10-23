@@ -9,6 +9,7 @@ A single web platform that vets and certifies engineering talent across three tr
 4. **Stage 4:** Live Technical Defence (25% weight, minimum average 2.5 / 4.0)
 
 Source-of-truth specifications live in [`/docs`](./docs):
+
 - [`docs/platform-design.md`](./docs/platform-design.md)
 - [`docs/blueprint-ai.md`](./docs/blueprint-ai.md)
 - [`docs/blueprint-iot.md`](./docs/blueprint-iot.md)
@@ -70,12 +71,12 @@ Copy `.env.example` to `web/.env.local` and fill in the local keys printed by `n
 cp .env.example web/.env.local
 ```
 
-| Variable | Scope | Description |
-| --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Public | Local Supabase API URL (`http://127.0.0.1:54321`) |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Local Supabase anonymous/public JWT key |
-| `SUPABASE_SERVICE_ROLE_KEY` | **Server-only** | Used only on the server to issue 60-second signed ID URLs after `log_admin_id_view` writes to `audit_log`. Never exposed to the browser bundle. |
-| `NEXT_PUBLIC_SITE_URL` | Public | Local web app origin (`http://localhost:3000`) |
+| Variable                        | Scope           | Description                                                                                                                                     |
+| ------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Public          | Local Supabase API URL (`http://127.0.0.1:54321`)                                                                                               |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public          | Local Supabase anonymous/public JWT key                                                                                                         |
+| `SUPABASE_SERVICE_ROLE_KEY`     | **Server-only** | Used only on the server to issue 60-second signed ID URLs after `log_admin_id_view` writes to `audit_log`. Never exposed to the browser bundle. |
+| `NEXT_PUBLIC_SITE_URL`          | Public          | Local web app origin (`http://localhost:3000`)                                                                                                  |
 
 ### 3. Install Dependencies & Run the Web App
 
@@ -92,13 +93,13 @@ Local confirmation emails sent during registration can be viewed at the local Ma
 
 All seeded accounts use the password `Password123!`:
 
-| Role | Email | Notes |
-| --- | --- | --- |
-| Admin | `admin@vetting.local` | Full access to `/admin` (ID verification, institutions, roles, audit log) |
-| Reviewer 1 | `reviewer1@vetting.local` | Attached to UNILAG (`blind` to candidate identities) |
-| Reviewer 2 | `reviewer2@vetting.local` | Attached to ABU (`blind` to candidate identities) |
-| Candidate 1 | `candidate1@vetting.local` | Sample candidate (`Chinedu Okafor`) |
-| Candidate 2 | `candidate2@vetting.local` | Sample candidate (`Amina Yusuf`) |
+| Role        | Email                      | Notes                                                                     |
+| ----------- | -------------------------- | ------------------------------------------------------------------------- |
+| Admin       | `admin@vetting.local`      | Full access to `/admin` (ID verification, institutions, roles, audit log) |
+| Reviewer 1  | `reviewer1@vetting.local`  | Attached to UNILAG (`blind` to candidate identities)                      |
+| Reviewer 2  | `reviewer2@vetting.local`  | Attached to ABU (`blind` to candidate identities)                         |
+| Candidate 1 | `candidate1@vetting.local` | Sample candidate (`Chinedu Okafor`)                                       |
+| Candidate 2 | `candidate2@vetting.local` | Sample candidate (`Amina Yusuf`)                                          |
 
 ---
 
