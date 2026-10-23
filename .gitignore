@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Next.js build output
+web/.next/
+web/out/
+web/build/
+web/next-env.d.ts
+
+# Environment variables (never commit secrets)
+.env
+.env.*
+!.env.example
+web/.env
+web/.env.*
+!web/.env.example
+
+# Supabase local runtime artifacts
+supabase/.branches
+supabase/.temp
+supabase/signing_keys.json
+
+# Testing & coverage
+coverage/
+**/coverage/
+
+# Python / Grader (M4+)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Logs & OS files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+*.tsbuildinfo
