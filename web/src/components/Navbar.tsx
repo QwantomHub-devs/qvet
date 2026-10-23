@@ -81,3 +81,4 @@ export function Navbar({ email, fullName, role }: NavbarProps) {
     </header>
   );
 }
+

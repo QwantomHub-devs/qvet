@@ -21,3 +21,4 @@ export function createBrowserSupabaseClient(): SupabaseClient {
   });
   return browserClient;
 }
+

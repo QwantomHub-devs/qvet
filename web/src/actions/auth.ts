@@ -119,3 +119,4 @@ export async function signOutAction(): Promise<void> {
   cookieStore.delete(REFRESH_TOKEN_COOKIE);
   redirect("/login");
 }
+

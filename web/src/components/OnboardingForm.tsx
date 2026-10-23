@@ -587,3 +587,4 @@ export function OnboardingForm({ profile, institutions, cohorts }: OnboardingFor
     </form>
   );
 }
+

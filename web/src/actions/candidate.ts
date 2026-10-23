@@ -209,3 +209,4 @@ export async function uploadIdDocumentAction(formData: FormData): Promise<Action
     message: "Government ID uploaded. Your application is now pending administrator verification.",
   };
 }
+

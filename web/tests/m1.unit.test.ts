@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import {
   checkUrlReachable,
   isValidHttpUrl,
@@ -7,7 +8,7 @@ import {
   normalizeUrl,
   validateOnboardingInput,
   type OnboardingInput,
-} from "../src/lib/validation/onboarding";
+} from "../src/lib/validation/onboarding.ts";
 
 const validInput: OnboardingInput = {
   fullName: "Chinedu Okafor",
@@ -28,30 +29,32 @@ const validInput: OnboardingInput = {
 
 describe("M1 Stage 0 Onboarding Validation & Reachability Checks", () => {
   it("normalizes names, phone numbers, and URLs consistently for duplicate detection", () => {
-    expect(normalizeFullName("  Chinedu   Okafor ")).toBe("chinedu okafor");
-    expect(normalizePhone("+234 (803) 111-2222")).toBe("+2348031112222");
-    expect(normalizeUrl("HTTPS://GitHub.com/Chinedu-Okafor/// ")).toBe(
+    assert.equal(normalizeFullName("  Chinedu   Okafor "), "chinedu okafor");
+    assert.equal(normalizePhone("+234 (803) 111-2222"), "+2348031112222");
+    assert.equal(
+      normalizeUrl("HTTPS://GitHub.com/Chinedu-Okafor/// "),
       "https://github.com/chinedu-okafor"
     );
   });
 
   it("validates HTTP/HTTPS URLs and rejects malformed links", () => {
-    expect(isValidHttpUrl("https://github.com/user")).toBe(true);
-    expect(isValidHttpUrl("ftp://github.com/user")).toBe(false);
-    expect(isValidHttpUrl("not-a-url")).toBe(false);
+    assert.equal(isValidHttpUrl("https://github.com/user"), true);
+    assert.equal(isValidHttpUrl("ftp://github.com/user"), false);
+    assert.equal(isValidHttpUrl("not-a-url"), false);
   });
 
   it("accepts valid Stage 0 input and rejects missing consent or invalid fields", () => {
-    expect(validateOnboardingInput(validInput)).toBeNull();
-    expect(validateOnboardingInput({ ...validInput, consent: false })).toMatch(/consent/i);
-    expect(validateOnboardingInput({ ...validInput, phone: "123" })).toMatch(/phone/i);
-    expect(
+    assert.equal(validateOnboardingInput(validInput), null);
+    assert.match(validateOnboardingInput({ ...validInput, consent: false }) ?? "", /consent/i);
+    assert.match(validateOnboardingInput({ ...validInput, phone: "123" }) ?? "", /phone/i);
+    assert.match(
       validateOnboardingInput({
         ...validInput,
         institutionId: null,
         otherInstitutionName: "",
-      })
-    ).toMatch(/institution/i);
+      }) ?? "",
+      /institution/i
+    );
   });
 
   it("verifies GitHub/portfolio URL reachability using HEAD request", async () => {
@@ -63,14 +66,15 @@ describe("M1 Stage 0 Onboarding Validation & Reachability Checks", () => {
     }) as unknown as typeof fetch;
 
     const resOk = await checkUrlReachable("https://github.com/octocat", okFetch);
-    expect(resOk.ok).toBe(true);
+    assert.equal(resOk.ok, true);
 
     const res404 = await checkUrlReachable("https://github.com/nonexistent-404", notFoundFetch);
-    expect(res404.ok).toBe(false);
-    expect(res404.error).toMatch(/404/);
+    assert.equal(res404.ok, false);
+    assert.match(res404.error ?? "", /404/);
 
     const resNet = await checkUrlReachable("https://unreachable.example.com", networkErrFetch);
-    expect(resNet.ok).toBe(false);
-    expect(resNet.error).toMatch(/Could not reach/);
+    assert.equal(resNet.ok, false);
+    assert.match(resNet.error ?? "", /Could not reach/);
   });
 });
+

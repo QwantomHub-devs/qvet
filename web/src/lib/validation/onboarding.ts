@@ -1,4 +1,4 @@
-import type { Track, TrackMetadata } from "@/lib/types/database";
+import type { Track, TrackMetadata } from "../types/database.ts";
 
 export interface OnboardingInput {
   fullName: string;
@@ -130,3 +130,4 @@ export function validateOnboardingInput(input: OnboardingInput): string | null {
   }
   return null;
 }
+
