@@ -1,327 +1,596 @@
 import assert from "node:assert/strict";
-import { before, describe, it } from "node:test";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import fs from "node:fs";
+import path from "node:path";
+import { after, before, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
+import { PGlite } from "@electric-sql/pglite";
+import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321";
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(__dirname, "../..");
 
-function makeClient(key: string): SupabaseClient {
-  return createClient(SUPABASE_URL, key, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  });
-}
+const SUPABASE_BASE_BOOTSTRAP_SQL = `
+create schema if not exists extensions;
+create schema if not exists auth;
+create schema if not exists storage;
 
-async function signInAs(
-  email: string,
-  password = "Password123!"
-): Promise<{
-  client: SupabaseClient;
-  userId: string;
-}> {
-  const client = makeClient(SUPABASE_ANON_KEY);
-  const { data, error } = await client.auth.signInWithPassword({ email, password });
-  if (error || !data.session || !data.user) {
-    throw new Error(`Failed to sign in as ${email}: ${error?.message}`);
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'anon') then
+    create role anon nologin noinherit;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'authenticated') then
+    create role authenticated nologin noinherit;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'service_role') then
+    create role service_role nologin noinherit bypassrls;
+  end if;
+end
+$$;
+
+grant usage on schema extensions, auth, storage to anon, authenticated, service_role;
+
+create table if not exists auth.users (
+  instance_id uuid,
+  id uuid primary key,
+  aud varchar(255),
+  role varchar(255),
+  email varchar(255) unique,
+  encrypted_password varchar(255),
+  email_confirmed_at timestamptz,
+  raw_app_meta_data jsonb default '{}'::jsonb,
+  raw_user_meta_data jsonb default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  confirmation_token varchar(255) default '',
+  email_change varchar(255) default '',
+  email_change_token_new varchar(255) default '',
+  recovery_token varchar(255) default ''
+);
+
+create table if not exists auth.identities (
+  id uuid primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  provider_id text not null,
+  identity_data jsonb not null,
+  provider text not null,
+  last_sign_in_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique (provider_id, provider)
+);
+
+create or replace function auth.uid()
+returns uuid
+language sql
+stable
+as $$
+  select coalesce(
+    nullif(current_setting('request.jwt.claim.sub', true), ''),
+    (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')
+  )::uuid;
+$$;
+
+create or replace function auth.role()
+returns text
+language sql
+stable
+as $$
+  select coalesce(
+    nullif(current_setting('request.jwt.claim.role', true), ''),
+    (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role')
+  )::text;
+$$;
+
+create table if not exists storage.buckets (
+  id text primary key,
+  name text not null,
+  public boolean default false,
+  file_size_limit bigint,
+  allowed_mime_types text[],
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists storage.objects (
+  id uuid primary key default gen_random_uuid(),
+  bucket_id text references storage.buckets(id),
+  name text not null,
+  owner uuid default auth.uid(),
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique (bucket_id, name)
+);
+
+alter table storage.objects enable row level security;
+alter table storage.objects force row level security;
+
+create or replace function storage.foldername(name text)
+returns text[]
+language sql
+immutable
+as $$
+  select string_to_array(name, '/');
+$$;
+
+grant select on storage.buckets to anon, authenticated, service_role;
+grant select, insert, update, delete on storage.objects to anon, authenticated, service_role;
+grant execute on all functions in schema auth, storage to anon, authenticated, service_role;
+`;
+
+const ADMIN_ID = "00000000-0000-0000-0000-000000000001";
+const REVIEWER1_ID = "00000000-0000-0000-0000-000000000002";
+const CANDIDATE1_ID = "00000000-0000-0000-0000-000000000004";
+const CANDIDATE2_ID = "00000000-0000-0000-0000-000000000005";
+
+/**
+ * Runs a SQL statement block inside a transaction as a specific authenticated user,
+ * matching Supabase PostgREST's exact JWT & role context.
+ */
+async function execAsUser<T = Record<string, unknown>>(
+  db: PGlite,
+  userId: string,
+  sql: string,
+  params: unknown[] = []
+): Promise<{ rows: T[] }> {
+  await db.exec("BEGIN");
+  try {
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [userId]);
+    await db.query(`select set_config('request.jwt.claim.role', 'authenticated', true)`);
+    await db.query(
+      `select set_config('request.jwt.claims', $1, true)`,
+      [JSON.stringify({ sub: userId, role: "authenticated" })]
+    );
+    await db.exec(`set local role authenticated`);
+    const result = await db.query<T>(sql, params);
+    await db.exec("COMMIT");
+    return { rows: result.rows };
+  } catch (err) {
+    await db.exec("ROLLBACK");
+    throw err;
   }
-  const authedClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-    global: {
-      headers: {
-        Authorization: `Bearer ${data.session.access_token}`,
-      },
-    },
-  });
-  return { client: authedClient, userId: data.user.id };
 }
 
-describe("M1 Integration Tests: Onboarding, RLS, Private ID Storage, Audit Log & Status Machine", () => {
-  let adminClient: SupabaseClient;
-  let reviewerClient: SupabaseClient;
-  let candidate1Client: SupabaseClient;
-  let candidate1Id: string;
-  let candidate2Client: SupabaseClient;
-  let candidate2Id: string;
-  let serviceClient: SupabaseClient;
+describe("M1 Database Migration, RLS Access Rules, Private Storage, Audit Log & Status Machine", () => {
+  let db: PGlite;
 
   before(async () => {
-    if (!SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
-      throw new Error(
-        "NEXT_PUBLIC_SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY must be set to run integration tests."
-      );
+    db = await PGlite.create({
+      extensions: { pgcrypto },
+    });
+
+    // 1. Bootstrap Supabase auth & storage base schemas
+    await db.exec(SUPABASE_BASE_BOOTSTRAP_SQL);
+
+    // 2. Apply 0001_m1_foundation.sql migration from disk
+    const migrationSql = fs.readFileSync(
+      path.join(REPO_ROOT, "supabase/migrations/0001_m1_foundation.sql"),
+      "utf8"
+    );
+    await db.exec(migrationSql);
+
+    // 3. Apply seed.sql from disk
+    const seedSql = fs.readFileSync(path.join(REPO_ROOT, "supabase/seed.sql"), "utf8");
+    await db.exec(seedSql);
+  });
+
+  after(async () => {
+    await db.close();
+  });
+
+  it("rebuilds cleanly from migrations + seed data and enables RLS on all 7 M1 tables", async () => {
+    const rlsCheck = await db.query<{ relname: string; relrowsecurity: boolean }>(
+      `select c.relname, c.relrowsecurity
+       from pg_class c
+       join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public'
+         and c.relname in ('settings', 'institutions', 'cohorts', 'profiles', 'applications', 'id_documents', 'audit_log')
+       order by c.relname`
+    );
+
+    assert.equal(rlsCheck.rows.length, 7);
+    for (const row of rlsCheck.rows) {
+      assert.equal(row.relrowsecurity, true, `Expected RLS enabled on ${row.relname}`);
     }
 
-    serviceClient = makeClient(SUPABASE_SERVICE_ROLE_KEY);
-
-    // Clean any previous test applications for candidate1 & candidate2 so tests are idempotent
-    await serviceClient
-      .from("applications")
-      .delete()
-      .in("user_id", [
-        "00000000-0000-0000-0000-000000000004",
-        "00000000-0000-0000-0000-000000000005",
-      ]);
-
-    await serviceClient
-      .from("profiles")
-      .update({ phone: null, github_url: null })
-      .in("user_id", [
-        "00000000-0000-0000-0000-000000000004",
-        "00000000-0000-0000-0000-000000000005",
-      ]);
-
-    const adminAuth = await signInAs("admin@vetting.local");
-    adminClient = adminAuth.client;
-
-    const reviewerAuth = await signInAs("reviewer1@vetting.local");
-    reviewerClient = reviewerAuth.client;
-
-    const c1Auth = await signInAs("candidate1@vetting.local");
-    candidate1Client = c1Auth.client;
-    candidate1Id = c1Auth.userId;
-
-    const c2Auth = await signInAs("candidate2@vetting.local");
-    candidate2Client = c2Auth.client;
-    candidate2Id = c2Auth.userId;
+    const settingsCount = await db.query<{ count: string }>(
+      `select count(*)::text as count from public.settings`
+    );
+    assert.equal(Number(settingsCount.rows[0]?.count), 9);
   });
 
-  it("allows Candidate 1 to submit Stage 0 onboarding and rejects duplicate phone/GitHub or second track", async () => {
-    const { data: app1, error: err1 } = await candidate1Client.rpc("submit_onboarding", {
-      p_full_name: "Chinedu Okafor",
-      p_country: "Nigeria",
-      p_phone: "+234 803 555 0101",
-      p_github_url: "https://github.com/chinedu-okafor-ai",
-      p_years_experience: 2.5,
-      p_self_declared_strengths: "Data cleaning, feature engineering, RAG evaluation",
-      p_time_zone: "Africa/Lagos",
-      p_weekly_availability_hours: 25,
-      p_institution_id: "11111111-1111-1111-1111-111111111101",
-      p_other_institution_name: null,
-      p_track: "ai",
-      p_cohort_id: "22222222-2222-2222-2222-222222222201",
-      p_track_metadata: {},
-      p_consent: true,
-    });
+  it("allows Candidate 1 to submit Stage 0 onboarding and rejects duplicate phone, duplicate GitHub, or second track", async () => {
+    const { rows } = await execAsUser<{ status: string; current_stage: number; id: string }>(
+      db,
+      CANDIDATE1_ID,
+      `select id, status, current_stage from public.submit_onboarding(
+        'Chinedu Okafor',
+        'Nigeria',
+        '+234 803 111 2222',
+        'https://github.com/chinedu-okafor',
+        2.5,
+        'Python data cleaning, scikit-learn, and RAG evaluation',
+        'Africa/Lagos',
+        25,
+        '11111111-1111-1111-1111-111111111101'::uuid,
+        null,
+        'ai',
+        '22222222-2222-2222-2222-222222222201'::uuid,
+        '{}'::jsonb,
+        true
+      )`
+    );
 
-    assert.equal(err1, null);
-    assert.equal(app1.status, "registered");
-    assert.equal(app1.current_stage, 0);
+    assert.equal(rows[0]?.status, "registered");
+    assert.equal(rows[0]?.current_stage, 0);
 
-    // Candidate 1 cannot submit a second application
-    const { error: secondTrackErr } = await candidate1Client.rpc("submit_onboarding", {
-      p_full_name: "Chinedu Okafor",
-      p_country: "Nigeria",
-      p_phone: "+234 803 555 0101",
-      p_github_url: "https://github.com/chinedu-okafor-ai",
-      p_years_experience: 2.5,
-      p_self_declared_strengths: "IoT",
-      p_time_zone: "Africa/Lagos",
-      p_weekly_availability_hours: 25,
-      p_institution_id: "11111111-1111-1111-1111-111111111101",
-      p_other_institution_name: null,
-      p_track: "iot",
-      p_cohort_id: null,
-      p_track_metadata: {},
-      p_consent: true,
-    });
-    assert.notEqual(secondTrackErr, null);
-    assert.match(secondTrackErr?.message ?? "", /already have an active application/i);
+    // Rejects second application from the same candidate
+    await assert.rejects(
+      () =>
+        execAsUser(
+          db,
+          CANDIDATE1_ID,
+          `select public.submit_onboarding(
+            'Chinedu Okafor',
+            'Nigeria',
+            '+234 803 111 2222',
+            'https://github.com/chinedu-okafor',
+            2.5,
+            'IoT firmware',
+            'Africa/Lagos',
+            25,
+            '11111111-1111-1111-1111-111111111101'::uuid,
+            null,
+            'iot',
+            null,
+            '{}'::jsonb,
+            true
+          )`
+        ),
+      /already have an active application/i
+    );
 
-    // Candidate 2 cannot use Candidate 1's phone number
-    const { error: dupPhoneErr } = await candidate2Client.rpc("submit_onboarding", {
-      p_full_name: "Amina Yusuf",
-      p_country: "Nigeria",
-      p_phone: "+234-803-555-0101",
-      p_github_url: "https://github.com/amina-yusuf-iot",
-      p_years_experience: 3,
-      p_self_declared_strengths: "ESP32, C++, MQTT",
-      p_time_zone: "Africa/Lagos",
-      p_weekly_availability_hours: 30,
-      p_institution_id: null,
-      p_other_institution_name: "Independent Hardware Lab",
-      p_track: "iot",
-      p_cohort_id: null,
-      p_track_metadata: { boards_used: ["ESP32"] },
-      p_consent: true,
-    });
-    assert.notEqual(dupPhoneErr, null);
-    assert.match(dupPhoneErr?.message ?? "", /Duplicate account detected.*phone/i);
+    // Rejects duplicate phone number from Candidate 2
+    await assert.rejects(
+      () =>
+        execAsUser(
+          db,
+          CANDIDATE2_ID,
+          `select public.submit_onboarding(
+            'Amina Yusuf',
+            'Nigeria',
+            '+234-803-111-2222',
+            'https://github.com/amina-yusuf',
+            3.0,
+            'ESP32, C++, MQTT',
+            'Africa/Lagos',
+            30,
+            null,
+            'Independent Embedded Lab Kano',
+            'iot',
+            null,
+            '{"boards_used": ["ESP32"]}'::jsonb,
+            true
+          )`
+        ),
+      /Duplicate account detected.*phone/i
+    );
 
-    // Candidate 2 submits valid onboarding with unique phone & GitHub
-    const { data: app2, error: err2 } = await candidate2Client.rpc("submit_onboarding", {
-      p_full_name: "Amina Yusuf",
-      p_country: "Nigeria",
-      p_phone: "+234 809 777 0202",
-      p_github_url: "https://github.com/amina-yusuf-iot",
-      p_years_experience: 3,
-      p_self_declared_strengths: "ESP32, C++, MQTT",
-      p_time_zone: "Africa/Lagos",
-      p_weekly_availability_hours: 30,
-      p_institution_id: null,
-      p_other_institution_name: "Independent Hardware Lab",
-      p_track: "iot",
-      p_cohort_id: null,
-      p_track_metadata: { boards_used: ["ESP32"] },
-      p_consent: true,
-    });
-    assert.equal(err2, null);
-    assert.equal(app2.status, "registered");
+    // Rejects duplicate GitHub URL from Candidate 2
+    await assert.rejects(
+      () =>
+        execAsUser(
+          db,
+          CANDIDATE2_ID,
+          `select public.submit_onboarding(
+            'Amina Yusuf',
+            'Nigeria',
+            '+234 809 999 8888',
+            'HTTPS://github.com/chinedu-okafor/',
+            3.0,
+            'ESP32, C++, MQTT',
+            'Africa/Lagos',
+            30,
+            null,
+            'Independent Embedded Lab Kano',
+            'iot',
+            null,
+            '{"boards_used": ["ESP32"]}'::jsonb,
+            true
+          )`
+        ),
+      /Duplicate account detected.*GitHub/i
+    );
+
+    // Candidate 2 succeeds with unique phone and GitHub + Other/Independent institution
+    const c2Res = await execAsUser<{ status: string }>(
+      db,
+      CANDIDATE2_ID,
+      `select status from public.submit_onboarding(
+        'Amina Yusuf',
+        'Nigeria',
+        '+234 809 999 8888',
+        'https://github.com/amina-yusuf',
+        3.0,
+        'ESP32, C++, MQTT',
+        'Africa/Lagos',
+        30,
+        null,
+        'Independent Embedded Lab Kano',
+        'iot',
+        null,
+        '{"boards_used": ["ESP32"]}'::jsonb,
+        true
+      )`
+    );
+    assert.equal(c2Res.rows[0]?.status, "registered");
   });
 
-  it("enforces RLS: a candidate cannot read another candidate's data, and a reviewer cannot see candidate identities", async () => {
-    const { data: c2Profiles } = await candidate2Client.from("profiles").select("*");
-    assert.equal(c2Profiles?.length, 1);
-    assert.equal(c2Profiles?.[0]?.user_id, candidate2Id);
+  it("proves a candidate cannot read another candidate's data and a reviewer cannot see candidate profiles", async () => {
+    // Candidate 2 queries profiles -> sees only own profile, never Candidate 1
+    const c2Profiles = await execAsUser<{ user_id: string }>(
+      db,
+      CANDIDATE2_ID,
+      `select user_id from public.profiles`
+    );
+    assert.equal(c2Profiles.rows.length, 1);
+    assert.equal(c2Profiles.rows[0]?.user_id, CANDIDATE2_ID);
 
-    const { data: c2Apps } = await candidate2Client.from("applications").select("*");
-    assert.equal(c2Apps?.length, 1);
-    assert.equal(c2Apps?.[0]?.user_id, candidate2Id);
+    // Candidate 2 queries applications -> sees only own application, never Candidate 1
+    const c2Apps = await execAsUser<{ user_id: string }>(
+      db,
+      CANDIDATE2_ID,
+      `select user_id from public.applications`
+    );
+    assert.equal(c2Apps.rows.length, 1);
+    assert.equal(c2Apps.rows[0]?.user_id, CANDIDATE2_ID);
 
-    const { data: c2Audit } = await candidate2Client.from("audit_log").select("*");
-    assert.equal(c2Audit?.length ?? 0, 0);
+    // Candidate 2 cannot read audit_log
+    const c2Audit = await execAsUser(db, CANDIDATE2_ID, `select * from public.audit_log`);
+    assert.equal(c2Audit.rows.length, 0);
 
-    const { data: revProfiles } = await reviewerClient
-      .from("profiles")
-      .select("*")
-      .eq("role", "candidate");
-    assert.equal(revProfiles?.length ?? 0, 0);
+    // Reviewer 1 cannot read any candidate profiles or applications (blind review rule)
+    const revCandidateProfiles = await execAsUser(
+      db,
+      REVIEWER1_ID,
+      `select * from public.profiles where role = 'candidate'`
+    );
+    assert.equal(revCandidateProfiles.rows.length, 0);
 
-    const { data: revApps } = await reviewerClient.from("applications").select("*");
-    assert.equal(revApps?.length ?? 0, 0);
+    const revApps = await execAsUser(db, REVIEWER1_ID, `select * from public.applications`);
+    assert.equal(revApps.rows.length, 0);
   });
 
-  it("prevents a candidate from writing status, score, or role", async () => {
-    const { error: roleErr } = await candidate1Client
-      .from("profiles")
-      .update({ role: "admin" })
-      .eq("user_id", candidate1Id);
-    assert.notEqual(roleErr, null);
+  it("proves a candidate cannot write status, score, or role", async () => {
+    // 1. Candidate cannot escalate role to admin
+    await assert.rejects(
+      () =>
+        execAsUser(
+          db,
+          CANDIDATE1_ID,
+          `update public.profiles set role = 'admin' where user_id = auth.uid()`
+        ),
+      /Insufficient privilege to change user role/i
+    );
 
-    const { data: updatedStatusRows } = await candidate1Client
-      .from("applications")
-      .update({ status: "approved", score: 98.5 })
-      .eq("user_id", candidate1Id)
-      .select("*");
-    assert.equal(updatedStatusRows?.length ?? 0, 0);
+    // 2. Candidate cannot directly UPDATE application status or score (blocked by RLS + trigger)
+    const directUpdate = await execAsUser<{ id: string }>(
+      db,
+      CANDIDATE1_ID,
+      `update public.applications set status = 'approved', score = 95.0 where user_id = auth.uid() returning id`
+    );
+    assert.equal(directUpdate.rows.length, 0);
 
-    const { data: currentApp } = await candidate1Client
-      .from("applications")
-      .select("*")
-      .eq("user_id", candidate1Id)
-      .single();
-    assert.equal(currentApp.status, "registered");
-    assert.equal(currentApp.score, null);
+    // Verify application status is still 'registered' and score is still null
+    const verifyApp = await execAsUser<{ status: string; score: number | null }>(
+      db,
+      CANDIDATE1_ID,
+      `select status, score from public.applications where user_id = auth.uid()`
+    );
+    assert.equal(verifyApp.rows[0]?.status, "registered");
+    assert.equal(verifyApp.rows[0]?.score, null);
 
-    const { error: directAdvanceErr } = await candidate1Client.rpc("advance_status", {
-      p_application_id: currentApp.id,
-      p_new_status: "id_pending",
-      p_reason: "Direct client call",
-    });
-    assert.notEqual(directAdvanceErr, null);
-    assert.match(directAdvanceErr?.message ?? "", /cannot call advance_status directly/i);
+    // 3. Candidate cannot call advance_status directly
+    await assert.rejects(
+      () =>
+        execAsUser(
+          db,
+          CANDIDATE1_ID,
+          `select public.advance_status(
+            (select id from public.applications where user_id = auth.uid()),
+            'id_pending',
+            'Direct call attempt'
+          )`
+        ),
+      /Candidates and reviewers cannot call advance_status directly/i
+    );
   });
 
-  it("uploads ID to private storage, logs admin ID reads, rejects illegal transitions, and approves candidate ID", async () => {
-    const { data: app1 } = await candidate1Client
-      .from("applications")
-      .select("*")
-      .eq("user_id", candidate1Id)
-      .single();
-
-    const storagePath = `${candidate1Id}/${app1.id}/id-card.png`;
-    const fakePngBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  it("enforces private storage RLS, logs admin ID reads, rejects illegal status transitions, and approves candidate ID", async () => {
+    const app1Res = await execAsUser<{ id: string }>(
+      db,
+      CANDIDATE1_ID,
+      `select id from public.applications where user_id = auth.uid()`
+    );
+    const app1Id = app1Res.rows[0]!.id;
+    const storagePath = `${CANDIDATE1_ID}/${app1Id}/nin-card.pdf`;
 
     // Candidate 2 cannot upload into Candidate 1's storage folder
-    const { error: crossUploadErr } = await candidate2Client.storage
-      .from("id-documents")
-      .upload(storagePath, fakePngBytes, { contentType: "image/png" });
-    assert.notEqual(crossUploadErr, null);
+    await assert.rejects(
+      () =>
+        execAsUser(
+          db,
+          CANDIDATE2_ID,
+          `insert into storage.objects (bucket_id, name) values ('id-documents', $1)`,
+          [storagePath]
+        ),
+      /row-level security policy/i
+    );
 
-    // Candidate 1 uploads their ID file into private storage
-    const { error: uploadErr } = await candidate1Client.storage
-      .from("id-documents")
-      .upload(storagePath, fakePngBytes, { contentType: "image/png", upsert: true });
-    assert.equal(uploadErr, null);
+    // Candidate 1 uploads into their own storage folder in private bucket 'id-documents'
+    await execAsUser(
+      db,
+      CANDIDATE1_ID,
+      `insert into storage.objects (bucket_id, name) values ('id-documents', $1)`,
+      [storagePath]
+    );
 
-    // Candidate 1 records ID upload -> status transitions to id_pending
-    const { data: idDoc, error: recordErr } = await candidate1Client.rpc("record_id_upload", {
-      p_application_id: app1.id,
-      p_storage_path: storagePath,
-      p_file_size_bytes: fakePngBytes.byteLength,
-      p_mime_type: "image/png",
-      p_document_number: "NIN-9988776655",
-      p_name_on_id: "Chinedu Okafor",
-    });
-    assert.equal(recordErr, null);
-    assert.equal(idDoc.application_id, app1.id);
+    // Candidate 1 cannot record an ID upload if name_on_id does not match profile.full_name
+    await assert.rejects(
+      () =>
+        execAsUser(
+          db,
+          CANDIDATE1_ID,
+          `select public.record_id_upload($1::uuid, $2, 204800, 'application/pdf', 'NIN-12345678901', 'Someone Else')`,
+          [app1Id, storagePath]
+        ),
+      /does not match your registered full name/i
+    );
 
-    const { data: appAfterUpload } = await candidate1Client
-      .from("applications")
-      .select("*")
-      .eq("id", app1.id)
-      .single();
-    assert.equal(appAfterUpload.status, "id_pending");
+    // Candidate 1 records valid ID upload -> status transitions to id_pending
+    const docRes = await execAsUser<{ id: string }>(
+      db,
+      CANDIDATE1_ID,
+      `select id from public.record_id_upload($1::uuid, $2, 204800, 'application/pdf', 'NIN-12345678901', 'Chinedu Okafor')`,
+      [app1Id, storagePath]
+    );
+    const docId = docRes.rows[0]!.id;
 
-    // Illegal transitions are rejected even when called by Admin
-    const { error: illegalJump1 } = await adminClient.rpc("advance_status", {
-      p_application_id: app1.id,
-      p_new_status: "s1_open",
-      p_reason: "Skip approval",
-    });
-    assert.notEqual(illegalJump1, null);
-    assert.match(illegalJump1?.message ?? "", /Illegal status transition/i);
+    // Candidate 2 cannot reuse Candidate 1's government ID number
+    const app2Res = await execAsUser<{ id: string }>(
+      db,
+      CANDIDATE2_ID,
+      `select id from public.applications where user_id = auth.uid()`
+    );
+    const app2Id = app2Res.rows[0]!.id;
+    const c2Path = `${CANDIDATE2_ID}/${app2Id}/id.png`;
+    await execAsUser(
+      db,
+      CANDIDATE2_ID,
+      `insert into storage.objects (bucket_id, name) values ('id-documents', $1)`,
+      [c2Path]
+    );
+    await assert.rejects(
+      () =>
+        execAsUser(
+          db,
+          CANDIDATE2_ID,
+          `select public.record_id_upload($1::uuid, $2, 150000, 'image/png', 'nin 12345678901', 'Amina Yusuf')`,
+          [app2Id, c2Path]
+        ),
+      /Duplicate account detected.*government ID/i
+    );
 
-    const { error: illegalJump2 } = await adminClient.rpc("advance_status", {
-      p_application_id: app1.id,
-      p_new_status: "certified",
-      p_reason: "Skip all stages",
-    });
-    assert.notEqual(illegalJump2, null);
-    assert.match(illegalJump2?.message ?? "", /Illegal status transition/i);
+    // Illegal status transitions are rejected even when called by Admin
+    await assert.rejects(
+      () =>
+        execAsUser(
+          db,
+          ADMIN_ID,
+          `select public.advance_status($1::uuid, 's1_open', 'Trying to skip ID approval')`,
+          [app1Id]
+        ),
+      /Illegal status transition from id_pending to s1_open/i
+    );
 
-    // Candidate cannot call log_admin_id_view
-    const { error: nonAdminViewErr } = await candidate1Client.rpc("log_admin_id_view", {
-      p_id_document_id: idDoc.id,
-    });
-    assert.notEqual(nonAdminViewErr, null);
+    await assert.rejects(
+      () =>
+        execAsUser(
+          db,
+          ADMIN_ID,
+          `select public.advance_status($1::uuid, 'certified', 'Trying to jump straight to certified')`,
+          [app1Id]
+        ),
+      /Illegal status transition from id_pending to certified/i
+    );
 
-    // Admin calls log_admin_id_view and generates a short-lived signed URL
-    const { data: loggedPath, error: adminViewErr } = await adminClient.rpc("log_admin_id_view", {
-      p_id_document_id: idDoc.id,
-    });
-    assert.equal(adminViewErr, null);
-    assert.equal(loggedPath, storagePath);
+    await assert.rejects(
+      () =>
+        execAsUser(
+          db,
+          ADMIN_ID,
+          `select public.advance_status($1::uuid, 'approved', 'Trying to approve before ID upload')`,
+          [app2Id]
+        ),
+      /Illegal status transition from registered to approved/i
+    );
 
-    const { data: signedUrlData, error: signErr } = await serviceClient.storage
-      .from("id-documents")
-      .createSignedUrl(String(loggedPath), 60);
-    assert.equal(signErr, null);
-    assert.ok(signedUrlData?.signedUrl.includes("/storage/v1/object/sign/id-documents/"));
+    // Non-admin cannot call log_admin_id_view
+    await assert.rejects(
+      () =>
+        execAsUser(
+          db,
+          CANDIDATE1_ID,
+          `select public.log_admin_id_view($1::uuid)`,
+          [docId]
+        ),
+      /Only administrators can view ID documents/i
+    );
 
-    // Verify audit_log recorded the admin read of the ID document
-    const { data: viewLogs } = await adminClient
-      .from("audit_log")
-      .select("*")
-      .eq("action", "id_document_viewed")
-      .eq("entity_id", idDoc.id);
-    assert.ok((viewLogs?.length ?? 0) >= 1);
+    // Admin views ID document -> returns storage_path and logs to audit_log
+    const viewRes = await execAsUser<{ log_admin_id_view: string }>(
+      db,
+      ADMIN_ID,
+      `select public.log_admin_id_view($1::uuid)`,
+      [docId]
+    );
+    assert.equal(viewRes.rows[0]?.log_admin_id_view, storagePath);
 
-    // Admin approves the candidate's ID -> status becomes `approved` and stage becomes 1
-    const { data: approvedApp, error: approveErr } = await adminClient.rpc("admin_verify_id", {
-      p_application_id: app1.id,
-      p_decision: "approved",
-      p_reason: "Government ID verified clearly",
-    });
-    assert.equal(approveErr, null);
-    assert.equal(approvedApp.status, "approved");
-    assert.equal(approvedApp.current_stage, 1);
+    const viewAudit = await execAsUser<{ action: string; actor: string }>(
+      db,
+      ADMIN_ID,
+      `select action, actor from public.audit_log where action = 'id_document_viewed' and entity_id = $1::uuid`,
+      [docId]
+    );
+    assert.equal(viewAudit.rows.length, 1);
+    assert.equal(viewAudit.rows[0]?.actor, ADMIN_ID);
+
+    // Test rejection -> candidate re-upload -> admin approval flow
+    const rejectRes = await execAsUser<{ status: string }>(
+      db,
+      ADMIN_ID,
+      `select status from public.admin_verify_id($1::uuid, 'rejected', 'Image corners were cut off')`,
+      [app1Id]
+    );
+    assert.equal(rejectRes.rows[0]?.status, "rejected");
+
+    const newStoragePath = `${CANDIDATE1_ID}/${app1Id}/nin-card-clear.pdf`;
+    await execAsUser(
+      db,
+      CANDIDATE1_ID,
+      `insert into storage.objects (bucket_id, name) values ('id-documents', $1)`,
+      [newStoragePath]
+    );
+    await execAsUser(
+      db,
+      CANDIDATE1_ID,
+      `select public.record_id_upload($1::uuid, $2, 240000, 'application/pdf', 'NIN-12345678901', 'Chinedu Okafor')`,
+      [app1Id, newStoragePath]
+    );
+
+    const pendingAgain = await execAsUser<{ status: string }>(
+      db,
+      CANDIDATE1_ID,
+      `select status from public.applications where id = $1::uuid`,
+      [app1Id]
+    );
+    assert.equal(pendingAgain.rows[0]?.status, "id_pending");
+
+    // Admin approves -> status becomes `approved` and current_stage auto-advances to 1
+    const approveRes = await execAsUser<{ status: string; current_stage: number }>(
+      db,
+      ADMIN_ID,
+      `select status, current_stage from public.admin_verify_id($1::uuid, 'approved', 'Clear government ID verified')`,
+      [app1Id]
+    );
+    assert.equal(approveRes.rows[0]?.status, "approved");
+    assert.equal(approveRes.rows[0]?.current_stage, 1);
+
+    // Verify audit_log is immutable (cannot be updated or deleted even by superuser/admin)
+    await assert.rejects(
+      () => db.exec(`delete from public.audit_log`),
+      /audit_log is immutable/i
+    );
   });
 });

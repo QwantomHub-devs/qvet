@@ -231,6 +231,16 @@ as $$
   select coalesce(public.current_user_role() = 'admin', false);
 $$;
 
+create or replace function public.is_admin_or_service_role()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.is_admin() or coalesce(auth.role(), '') = 'service_role';
+$$;
+
 -- -----------------------------------------------------------------------------
 -- 4. Protection Triggers (Defense-in-Depth)
 -- -----------------------------------------------------------------------------
@@ -279,8 +289,7 @@ begin
 
   if new.role is distinct from old.role then
     if coalesce(current_setting('app.allow_role_update', true), '') <> 'true'
-       and current_user not in ('postgres', 'service_role')
-       and not public.is_admin() then
+       and not public.is_admin_or_service_role() then
       raise exception 'Insufficient privilege to change user role' using errcode = '42501';
     end if;
   end if;
@@ -510,10 +519,9 @@ declare
   v_new_stage integer;
   v_is_valid boolean := false;
 begin
-  -- Verify caller authorization: only internal server functions, admins, or postgres/service_role
+  -- Verify caller authorization: only internal server functions, admins, or service_role
   if coalesce(current_setting('app.internal_caller', true), '') <> 'true'
-     and not public.is_admin()
-     and current_user not in ('postgres', 'service_role') then
+     and not public.is_admin_or_service_role() then
     raise exception 'Candidates and reviewers cannot call advance_status directly'
       using errcode = '42501';
   end if;
@@ -945,7 +953,7 @@ declare
   v_doc public.id_documents;
   v_app public.applications;
 begin
-  if not public.is_admin() and current_user not in ('postgres', 'service_role') then
+  if not public.is_admin_or_service_role() then
     raise exception 'Only administrators can verify ID documents' using errcode = '42501';
   end if;
 
@@ -998,7 +1006,7 @@ as $$
 declare
   v_doc public.id_documents;
 begin
-  if not public.is_admin() and current_user not in ('postgres', 'service_role') then
+  if not public.is_admin_or_service_role() then
     raise exception 'Only administrators can view ID documents' using errcode = '42501';
   end if;
 
@@ -1041,7 +1049,7 @@ declare
   v_old_role text;
   v_profile public.profiles;
 begin
-  if not public.is_admin() and current_user not in ('postgres', 'service_role') then
+  if not public.is_admin_or_service_role() then
     raise exception 'Only administrators can change user roles' using errcode = '42501';
   end if;
 
@@ -1096,7 +1104,7 @@ declare
   v_inst public.institutions;
   v_before jsonb := null;
 begin
-  if not public.is_admin() and current_user not in ('postgres', 'service_role') then
+  if not public.is_admin_or_service_role() then
     raise exception 'Only administrators can manage institutions' using errcode = '42501';
   end if;
 
@@ -1137,3 +1145,12 @@ begin
   return v_inst;
 end;
 $$;
+
+-- -----------------------------------------------------------------------------
+-- 8. Explicit Role Grants (RLS enforces row and operation access)
+-- -----------------------------------------------------------------------------
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on all tables in schema public to authenticated, service_role;
+grant execute on all functions in schema public to authenticated, service_role;
+
+

@@ -394,3 +394,4 @@ select is(
 
 select * from finish();
 rollback;
+

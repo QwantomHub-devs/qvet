@@ -2,8 +2,8 @@ import { cookies } from "next/headers";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getSupabasePublicEnv } from "./client";
 
-export const ACCESS_TOKEN_COOKIE = "vetting_sb_access_token";
-export const REFRESH_TOKEN_COOKIE = "vetting_sb_refresh_token";
+export const ACCESS_TOKEN_COOKIE = "vetting_sb_access_token_#@$&#&#*@";
+export const REFRESH_TOKEN_COOKIE = "vetting_sb_refresh_token_#@$&#&#*@";
 
 /**
  * Creates a server-side Supabase client authenticated with the user's session cookie.
