@@ -183,3 +183,143 @@ begin
 end;
 $$;
 
+
+-- =============================================================================
+-- 4. Milestone 2 (M2): AI Track Stage 2 Exam Blueprints & Fake Sample Questions
+-- NOTE: All seeded questions below are clearly marked FAKE SAMPLE questions for
+-- testing the exam engine only. Do NOT use them as real assessment content.
+-- =============================================================================
+
+insert into public.exam_blueprints (track, stage, domain, count, easy_pct, medium_pct, hard_pct)
+values
+  ('ai', 2, 'python_data', 8, 40, 40, 20),
+  ('ai', 2, 'stats_ml', 10, 40, 40, 20),
+  ('ai', 2, 'eval_debugging', 8, 40, 40, 20),
+  ('ai', 2, 'dl_nlp', 4, 40, 40, 20),
+  ('ai', 2, 'llm_apps', 6, 40, 40, 20),
+  ('ai', 2, 'eng_practice', 4, 40, 40, 20)
+on conflict (track, stage, domain) do update
+set count = excluded.count,
+    easy_pct = excluded.easy_pct,
+    medium_pct = excluded.medium_pct,
+    hard_pct = excluded.hard_pct;
+
+-- Seed 40 clearly marked FAKE SAMPLE questions matching the exact AI Stage 2 blueprint
+-- (plus 8 extra fake buffer items so every domain/difficulty has surplus for random draws)
+do $$
+declare
+  v_domains text[] := array[
+    'python_data',
+    'stats_ml',
+    'eval_debugging',
+    'dl_nlp',
+    'llm_apps',
+    'eng_practice'
+  ];
+  v_easy_counts int[] := array[3, 4, 3, 2, 2, 2];   -- sum = 16 (40% of 40)
+  v_med_counts  int[] := array[4, 4, 3, 1, 3, 1];   -- sum = 16 (40% of 40)
+  v_hard_counts int[] := array[1, 2, 2, 1, 1, 1];   -- sum = 8  (20% of 40)
+  v_d_idx int;
+  v_dom text;
+  v_diff text;
+  v_target int;
+  v_i int;
+  v_seq int := 0;
+  v_qid uuid;
+  v_type text;
+  v_stem text;
+  v_code text;
+  v_options jsonb;
+  v_tol numeric(10,4);
+  v_correct text;
+begin
+  for v_d_idx in 1..array_length(v_domains, 1) loop
+    v_dom := v_domains[v_d_idx];
+
+    foreach v_diff in array array['easy', 'medium', 'hard'] loop
+      v_target := case v_diff
+        when 'easy' then v_easy_counts[v_d_idx]
+        when 'medium' then v_med_counts[v_d_idx]
+        else v_hard_counts[v_d_idx]
+      end;
+
+      for v_i in 1..v_target loop
+        v_seq := v_seq + 1;
+        v_qid := ('33333333-3333-3333-3333-' || lpad(v_seq::text, 12, '0'))::uuid;
+
+        -- Include 6 code_reading items and 4 numeric-with-tolerance items across the 40 fake sample questions
+        if v_seq in (3, 7, 15, 22, 31, 37) then
+          v_type := 'code_reading';
+          v_code := format(
+            E'# FAKE SAMPLE SNIPPET #%s (%s)\nimport pandas as pd\ndf = pd.DataFrame({"x": [1, 2, None, 4]})\nprint(len(df.dropna()))',
+            v_seq, v_dom
+          );
+          v_stem := format(
+            '[FAKE SAMPLE #%s - NOT REAL CONTENT] (%s / %s) What does the sample code snippet print?',
+            v_seq, v_dom, v_diff
+          );
+          v_options := jsonb_build_array(
+            jsonb_build_object('id', 'A', 'text', '3 (rows remaining after dropping missing values)'),
+            jsonb_build_object('id', 'B', 'text', '4 (all rows kept)'),
+            jsonb_build_object('id', 'C', 'text', '1 (only missing row)'),
+            jsonb_build_object('id', 'D', 'text', 'Raises a ValueError')
+          );
+          v_tol := 0;
+          v_correct := 'A';
+        elsif v_seq in (10, 20, 30, 40) then
+          v_type := 'numeric';
+          v_code := null;
+          v_stem := format(
+            '[FAKE SAMPLE #%s - NOT REAL CONTENT] (%s / %s) In this synthetic test item, if precision is 0.80 and recall is 0.80, what is the F1 score? (Tolerance ±0.02)',
+            v_seq, v_dom, v_diff
+          );
+          v_options := null;
+          v_tol := 0.02;
+          v_correct := '0.80';
+        else
+          v_type := 'mcq';
+          v_code := null;
+          v_stem := format(
+            '[FAKE SAMPLE #%s - NOT REAL CONTENT] (%s / %s) Placeholder multiple-choice question %s for domain %s (%s difficulty). Which option is marked correct for testing?',
+            v_seq, v_dom, v_diff, v_i, v_dom, v_diff
+          );
+          v_options := jsonb_build_array(
+            jsonb_build_object('id', 'A', 'text', 'Option A (Correct test choice)'),
+            jsonb_build_object('id', 'B', 'text', 'Option B (Distractor 1)'),
+            jsonb_build_object('id', 'C', 'text', 'Option C (Distractor 2)'),
+            jsonb_build_object('id', 'D', 'text', 'Option D (Distractor 3)')
+          );
+          v_tol := 0;
+          v_correct := 'A';
+        end if;
+
+        insert into public.questions (
+          id, track, stage, domain, difficulty, type, stem, code_snippet, options, tolerance, active
+        )
+        values (
+          v_qid, 'ai', 2, v_dom, v_diff, v_type, v_stem, v_code, v_options, v_tol, true
+        )
+        on conflict (id) do update
+        set domain = excluded.domain,
+            difficulty = excluded.difficulty,
+            type = excluded.type,
+            stem = excluded.stem,
+            code_snippet = excluded.code_snippet,
+            options = excluded.options,
+            tolerance = excluded.tolerance,
+            active = excluded.active;
+
+        insert into public.question_keys (question_id, correct, explanation)
+        values (
+          v_qid,
+          v_correct,
+          format('Fake sample answer key for item #%s (%s)', v_seq, v_dom)
+        )
+        on conflict (question_id) do update
+        set correct = excluded.correct,
+            explanation = excluded.explanation;
+      end loop;
+    end loop;
+  end loop;
+end;
+$$;
