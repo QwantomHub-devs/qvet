@@ -6,6 +6,7 @@ import {
   createServiceRoleSupabaseClient,
 } from "@/lib/supabase/server";
 import type { UserRole } from "@/lib/types/database";
+import { parseQuestionsCsv } from "@/lib/validation/csv-questions";
 import type { ActionResult } from "./auth";
 
 export interface SignedUrlResult extends ActionResult {
@@ -145,4 +146,80 @@ export async function setUserRoleAction(formData: FormData): Promise<ActionResul
     message: `Updated user role to ${newRole}.`,
   };
 }
+
+export async function importQuestionsCsvAction(formData: FormData): Promise<ActionResult> {
+  const csvText = String(formData.get("csvText") ?? "").trim();
+  if (!csvText) {
+    return { ok: false, error: "Please paste CSV content or upload a CSV file." };
+  }
+
+  const parsed = parseQuestionsCsv(csvText);
+  if (!parsed.ok || !parsed.items) {
+    return { ok: false, error: parsed.error ?? "Invalid CSV format." };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { data: importedCount, error } = await supabase.rpc("admin_import_questions", {
+    p_items: parsed.items,
+  });
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/admin");
+  return {
+    ok: true,
+    message: `Imported ${importedCount} question(s) and locked answer keys into the question bank.`,
+  };
+}
+
+export async function unlockStage2Action(formData: FormData): Promise<ActionResult> {
+  const applicationId = String(formData.get("applicationId") ?? "").trim();
+  if (!applicationId) {
+    return { ok: false, error: "Missing application ID." };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("admin_unlock_stage2", {
+    p_application_id: applicationId,
+  });
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/dashboard");
+  return {
+    ok: true,
+    message: "Application advanced to s2_open (Stage 2 Technical Exam unlocked).",
+  };
+}
+
+export async function toggleQuestionActiveAction(formData: FormData): Promise<ActionResult> {
+  const questionId = String(formData.get("questionId") ?? "").trim();
+  const active = formData.get("active") === "true";
+
+  if (!questionId) {
+    return { ok: false, error: "Missing question ID." };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase
+    .from("questions")
+    .update({ active })
+    .eq("id", questionId);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/admin");
+  return {
+    ok: true,
+    message: `Question ${active ? "activated" : "deactivated"}.`,
+  };
+}
+
 

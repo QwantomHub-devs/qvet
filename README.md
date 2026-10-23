@@ -29,16 +29,18 @@ Source-of-truth specifications live in [`/docs`](./docs):
 │   ├── config.toml
 │   ├── seed.sql
 │   ├── migrations/
-│   │   └── 0001_m1_foundation.sql
+│   │   ├── 0001_m1_foundation.sql
+│   │   └── 0002_m2_exam_engine.sql
 │   └── tests/
-│       └── m1_access_and_status.test.sql
+│       ├── m1_access_and_status.test.sql
+│       └── m2_exam_engine.test.sql
 ├── web/                             # Next.js (App Router, strict TypeScript, Tailwind CSS)
 │   ├── src/
-│   │   ├── actions/                 # Server Actions (Auth, Stage 0 onboarding, Admin ID verification)
+│   │   ├── actions/                 # Server Actions (Auth, Stage 0, Stage 2 Exam, Admin)
 │   │   ├── app/                     # Next.js App Router pages
 │   │   ├── components/              # Accessible, low-bandwidth UI components
 │   │   └── lib/                     # Supabase clients, strict database types, validators
-│   └── tests/                       # Vitest unit & integration test suites
+│   └── tests/                       # Automated unit & PostgreSQL 17 integration test suites
 └── grader/                          # Python 3 Docker grader worker (introduced in M4)
 ```
 
@@ -121,12 +123,22 @@ npm run typecheck
 npm run lint
 ```
 
-### 3. Unit & Integration Tests (Vitest)
+### 3. Unit & Integration Tests (PostgreSQL 17 + Node Test Runner)
 
 ```bash
 cd web
 npm test
 ```
+
+---
+
+## Stage 2 Exam Engine & Admin CSV Question Import (M2)
+
+- **Blueprint-Controlled Draw:** `start_exam(application_id)` draws 40 active questions for the AI Track matching the exact domain breakdown (`python_data`: 8, `stats_ml`: 10, `eval_debugging`: 8, `dl_nlp`: 4, `llm_apps`: 6, `eng_practice`: 4) and difficulty mix (40% easy = 16, 40% medium = 16, 20% hard = 8).
+- **Server-Side Timer & Auto-Submit:** `deadline_at` is set on the server from `settings.timers.stage_2_minutes` (60 minutes). Refreshing `/exam` resumes at `current_index` with the exact remaining server time. Any call after `deadline_at` auto-submits and scores the attempt.
+- **One Question at a Time & Answer Locking:** `get_question(attempt_id, index)` serves only the current unanswered question (`stem`, `code_snippet`, `options`) and never exposes `question_keys`. `submit_answer` locks the answer (`locked = true`) and advances `current_index`; going back or modifying a locked answer is rejected by database triggers and RPC checks.
+- **Admin CSV Import (`/admin` -> Question Bank):** Admins can import questions and locked answer keys via CSV with headers:
+  `track,stage,domain,difficulty,type,stem,code_snippet,option_a,option_b,option_c,option_d,correct,tolerance,explanation`
 
 ---
 

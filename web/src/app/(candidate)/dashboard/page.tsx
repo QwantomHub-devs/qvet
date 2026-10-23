@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { IdUploadForm } from "@/components/IdUploadForm";
 import { Navbar } from "@/components/Navbar";
 import { OnboardingForm } from "@/components/OnboardingForm";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
+  DOMAIN_LABELS,
   STATUS_DESCRIPTIONS,
   TRACK_LABELS,
   type Application,
@@ -11,6 +13,7 @@ import {
   type IdDocument,
   type Institution,
   type Profile,
+  type StageResult,
 } from "@/lib/types/database";
 
 export default async function CandidateDashboardPage() {
@@ -63,14 +66,24 @@ export default async function CandidateDashboardPage() {
   const cohorts = (cohortsData as Cohort[] | null) ?? [];
 
   let currentIdDoc: IdDocument | null = null;
+  let stage2Result: StageResult | null = null;
   if (application) {
-    const { data: idDocData } = await supabase
-      .from("id_documents")
-      .select("*")
-      .eq("application_id", application.id)
-      .eq("is_current", true)
-      .maybeSingle();
+    const [{ data: idDocData }, { data: s2Data }] = await Promise.all([
+      supabase
+        .from("id_documents")
+        .select("*")
+        .eq("application_id", application.id)
+        .eq("is_current", true)
+        .maybeSingle(),
+      supabase
+        .from("stage_results")
+        .select("*")
+        .eq("application_id", application.id)
+        .eq("stage", 2)
+        .maybeSingle(),
+    ]);
     currentIdDoc = (idDocData as IdDocument | null) ?? null;
+    stage2Result = (s2Data as StageResult | null) ?? null;
   }
 
   const statusMeta = application ? STATUS_DESCRIPTIONS[application.status] : null;
@@ -159,6 +172,71 @@ export default async function CandidateDashboardPage() {
                   Your identity check is complete and your application has automatically advanced to
                   Stage 1 (Foundation Screen).
                 </p>
+              </section>
+            )}
+
+            {application.status === "s2_open" && (
+              <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-xs space-y-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Stage 2: Technical Exam (60 Minutes · 40 Questions)
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Questions are drawn at random across your track domains and served one at a time.
+                    Once you submit an answer, it is locked and you cannot return to previous
+                    questions. If your connection drops, refresh or reopen the exam to resume at the
+                    same question with your remaining time.
+                  </p>
+                </div>
+                <Link
+                  href="/exam"
+                  className="inline-block rounded bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  Start or Resume Technical Exam →
+                </Link>
+              </section>
+            )}
+
+            {stage2Result && (
+              <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-xs space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">
+                      Stage 2 Technical Exam Result: {stage2Result.percent}%
+                    </h2>
+                    <p className="text-xs text-slate-600">
+                      Score: {stage2Result.raw_score} /{" "}
+                      {stage2Result.details?.total_questions ?? 40} · Minimum to pass: 60%
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded border px-2.5 py-1 text-xs font-semibold ${
+                      stage2Result.passed
+                        ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                        : "border-red-300 bg-red-100 text-red-900"
+                    }`}
+                  >
+                    {stage2Result.passed ? "Passed" : "Did Not Pass"}
+                  </span>
+                </div>
+
+                {stage2Result.details?.domain_scores && (
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                    {Object.entries(stage2Result.details.domain_scores).map(([dom, stats]) => (
+                      <div
+                        key={dom}
+                        className="rounded border border-slate-200 bg-slate-50 p-3 text-xs"
+                      >
+                        <p className="font-semibold text-slate-800">
+                          {DOMAIN_LABELS[dom] ?? dom}
+                        </p>
+                        <p className="mt-1 font-mono text-sm font-bold text-slate-900">
+                          {stats.percent}% ({stats.correct}/{stats.total})
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
             )}
           </>

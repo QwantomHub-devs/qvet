@@ -3,11 +3,15 @@
 import React, { useState, useTransition } from "react";
 import {
   getSignedIdDocumentUrlAction,
+  importQuestionsCsvAction,
   setUserRoleAction,
+  toggleQuestionActiveAction,
+  unlockStage2Action,
   upsertInstitutionAction,
   verifyIdDocumentAction,
 } from "@/actions/admin";
 import {
+  DOMAIN_LABELS,
   STATUS_DESCRIPTIONS,
   TRACK_LABELS,
   type Application,
@@ -15,6 +19,7 @@ import {
   type IdDocument,
   type Institution,
   type Profile,
+  type Question,
   type SettingRow,
 } from "@/lib/types/database";
 
@@ -27,23 +32,30 @@ export interface AdminApplicationRow {
 
 interface AdminConsoleClientProps {
   rows: AdminApplicationRow[];
+  questions: Question[];
   institutions: Institution[];
   profiles: Profile[];
   auditLogs: AuditLogEntry[];
   settings: SettingRow[];
 }
 
+const SAMPLE_CSV_TEMPLATE = `track,stage,domain,difficulty,type,stem,code_snippet,option_a,option_b,option_c,option_d,correct,tolerance,explanation
+ai,2,python_data,easy,mcq,"[FAKE SAMPLE CSV] Which pandas method removes rows with missing values?",,dropna(),fillna(),isna(),astype(),A,0,dropna removes missing rows
+ai,2,eval_debugging,medium,numeric,"[FAKE SAMPLE CSV] If TP=80, FP=20, FN=20, what is the F1 score?",,,,,,0.80,0.02,Precision=0.80 and Recall=0.80 so F1=0.80`;
+
 export function AdminConsoleClient({
   rows,
+  questions,
   institutions,
   profiles,
   auditLogs,
   settings,
 }: AdminConsoleClientProps) {
   const [activeTab, setActiveTab] = useState<
-    "applications" | "institutions" | "users" | "audit" | "settings"
+    "applications" | "questions" | "institutions" | "users" | "audit" | "settings"
   >("applications");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [csvText, setCsvText] = useState<string>("");
   const [feedback, setFeedback] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [signedPreview, setSignedPreview] = useState<{ docId: string; url: string } | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -79,6 +91,50 @@ export function AdminConsoleClient({
         return;
       }
       setFeedback({ type: "ok", text: res.message ?? "Updated." });
+    });
+  }
+
+  function handleUnlockStage2(applicationId: string) {
+    setFeedback(null);
+    const formData = new FormData();
+    formData.set("applicationId", applicationId);
+    startTransition(async () => {
+      const res = await unlockStage2Action(formData);
+      if (!res.ok) {
+        setFeedback({ type: "err", text: res.error ?? "Could not unlock Stage 2." });
+        return;
+      }
+      setFeedback({ type: "ok", text: res.message ?? "Stage 2 unlocked." });
+    });
+  }
+
+  function handleCsvImportSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFeedback(null);
+    const formData = new FormData(event.currentTarget);
+    startTransition(async () => {
+      const res = await importQuestionsCsvAction(formData);
+      if (!res.ok) {
+        setFeedback({ type: "err", text: res.error ?? "CSV import failed." });
+        return;
+      }
+      setCsvText("");
+      setFeedback({ type: "ok", text: res.message ?? "Questions imported." });
+    });
+  }
+
+  function handleToggleQuestion(questionId: string, nextActive: boolean) {
+    setFeedback(null);
+    const formData = new FormData();
+    formData.set("questionId", questionId);
+    formData.set("active", String(nextActive));
+    startTransition(async () => {
+      const res = await toggleQuestionActiveAction(formData);
+      if (!res.ok) {
+        setFeedback({ type: "err", text: res.error ?? "Could not update question." });
+        return;
+      }
+      setFeedback({ type: "ok", text: res.message ?? "Question updated." });
     });
   }
 
@@ -118,6 +174,7 @@ export function AdminConsoleClient({
         {(
           [
             { id: "applications", label: `Applications & ID Queue (${rows.length})` },
+            { id: "questions", label: `Question Bank & CSV Import (${questions.length})` },
             { id: "institutions", label: `Partner Institutions (${institutions.length})` },
             { id: "users", label: `Users & Roles (${profiles.length})` },
             { id: "audit", label: `Audit Log (${auditLogs.length})` },
@@ -198,6 +255,9 @@ export function AdminConsoleClient({
                 <option value="registered">registered</option>
                 <option value="approved">approved</option>
                 <option value="rejected">rejected</option>
+                <option value="s2_open">s2_open</option>
+                <option value="s2_passed">s2_passed</option>
+                <option value="s2_failed">s2_failed</option>
               </select>
             </div>
           </div>
@@ -247,11 +307,23 @@ export function AdminConsoleClient({
                         )}
                       </div>
 
-                      <span
-                        className={`rounded border px-2.5 py-1 text-xs font-semibold ${statusInfo.badgeClass}`}
-                      >
-                        {application.status}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {application.status === "approved" && (
+                          <button
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => handleUnlockStage2(application.id)}
+                            className="rounded border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-200"
+                          >
+                            Unlock Stage 2 Exam
+                          </button>
+                        )}
+                        <span
+                          className={`rounded border px-2.5 py-1 text-xs font-semibold ${statusInfo.badgeClass}`}
+                        >
+                          {application.status}
+                        </span>
+                      </div>
                     </div>
 
                     {currentIdDoc ? (
@@ -330,6 +402,106 @@ export function AdminConsoleClient({
               })}
             </div>
           )}
+        </section>
+      )}
+
+      {activeTab === "questions" && (
+        <section className="space-y-6">
+          <form
+            onSubmit={handleCsvImportSubmit}
+            className="space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-xs"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">
+                  Import Questions from CSV (with Locked Answer Keys)
+                </h2>
+                <p className="text-xs text-slate-600">
+                  Columns: track, stage, domain, difficulty, type, stem, code_snippet, option_a,
+                  option_b, option_c, option_d, correct, tolerance, explanation
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCsvText(SAMPLE_CSV_TEMPLATE)}
+                className="rounded border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+              >
+                Load Sample CSV Template
+              </button>
+            </div>
+
+            <textarea
+              name="csvText"
+              rows={5}
+              required
+              value={csvText}
+              onChange={(e) => setCsvText(e.target.value)}
+              placeholder="Paste CSV rows here..."
+              className="w-full rounded border border-slate-300 p-3 font-mono text-xs text-slate-900"
+            />
+
+            <button
+              type="submit"
+              disabled={isPending}
+              className="rounded bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              {isPending ? "Importing..." : "Import CSV into Question Bank"}
+            </button>
+          </form>
+
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
+              <thead className="bg-slate-50 font-semibold uppercase text-slate-600">
+                <tr>
+                  <th className="px-3 py-2.5">Track / Stage</th>
+                  <th className="px-3 py-2.5">Domain</th>
+                  <th className="px-3 py-2.5">Difficulty</th>
+                  <th className="px-3 py-2.5">Type</th>
+                  <th className="px-3 py-2.5">Stem</th>
+                  <th className="px-3 py-2.5">Stats (Correct/Used)</th>
+                  <th className="px-3 py-2.5">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {questions.map((q) => {
+                  const hitRate =
+                    q.times_used > 0 ? `${Math.round((q.times_correct / q.times_used) * 100)}%` : "—";
+                  return (
+                    <tr key={q.id}>
+                      <td className="whitespace-nowrap px-3 py-2 font-semibold uppercase text-slate-800">
+                        {q.track} · S{q.stage}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-slate-700">
+                        {DOMAIN_LABELS[q.domain] ?? q.domain}
+                      </td>
+                      <td className="px-3 py-2 uppercase text-slate-700">{q.difficulty}</td>
+                      <td className="px-3 py-2 font-mono text-slate-600">{q.type}</td>
+                      <td className="max-w-md truncate px-3 py-2 text-slate-900" title={q.stem}>
+                        {q.stem}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 font-mono text-slate-600">
+                        {q.times_correct}/{q.times_used} ({hitRate})
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2">
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => handleToggleQuestion(q.id, !q.active)}
+                          className={`rounded border px-2 py-0.5 text-xs font-semibold ${
+                            q.active
+                              ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                              : "border-slate-300 bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {q.active ? "Active" : "Inactive"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 
@@ -527,4 +699,3 @@ export function AdminConsoleClient({
     </div>
   );
 }
-

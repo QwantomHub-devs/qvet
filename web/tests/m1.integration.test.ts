@@ -163,12 +163,16 @@ describe("M1 Database Migration, RLS Access Rules, Private Storage, Audit Log & 
     // 1. Bootstrap Supabase auth & storage base schemas
     await db.exec(SUPABASE_BASE_BOOTSTRAP_SQL);
 
-    // 2. Apply 0001_m1_foundation.sql migration from disk
-    const migrationSql = fs.readFileSync(
-      path.join(REPO_ROOT, "supabase/migrations/0001_m1_foundation.sql"),
-      "utf8"
-    );
-    await db.exec(migrationSql);
+    // 2. Apply all migrations in supabase/migrations in sorted order
+    const migrationsDir = path.join(REPO_ROOT, "supabase/migrations");
+    const migrationFiles = fs
+      .readdirSync(migrationsDir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort();
+    for (const file of migrationFiles) {
+      const migrationSql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
+      await db.exec(migrationSql);
+    }
 
     // 3. Apply seed.sql from disk
     const seedSql = fs.readFileSync(path.join(REPO_ROOT, "supabase/seed.sql"), "utf8");

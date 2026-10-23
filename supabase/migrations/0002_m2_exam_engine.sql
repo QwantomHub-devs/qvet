@@ -714,24 +714,46 @@ begin
   into v_sum_easy, v_sum_medium, v_sum_hard
   from tmp_blueprint_alloc;
 
-  -- Distribute fractional remainder seats across domains to hit exact global difficulty targets
+  -- Distribute fractional remainder seats across domains (at most +1 per difficulty per domain)
+  -- 1. Hard remainder seats ordered by largest fractional remainder (eb.count * eb.hard_pct) % 100
   for v_rec in
-    select domain, rem_cnt from tmp_blueprint_alloc where rem_cnt > 0 order by rem_cnt desc, domain asc
+    select a.domain
+    from tmp_blueprint_alloc a
+    join public.exam_blueprints eb
+      on eb.track = v_app.track and eb.stage = 2 and eb.domain = a.domain
+    where a.rem_cnt > 0
+    order by ((eb.count * eb.hard_pct) % 100) desc, a.domain asc
   loop
-    while v_rec.rem_cnt > 0 loop
-      if v_sum_hard < v_target_hard then
-        update tmp_blueprint_alloc set hard_cnt = hard_cnt + 1, rem_cnt = rem_cnt - 1 where domain = v_rec.domain;
-        v_sum_hard := v_sum_hard + 1;
-      elsif v_sum_easy < v_target_easy then
-        update tmp_blueprint_alloc set easy_cnt = easy_cnt + 1, rem_cnt = rem_cnt - 1 where domain = v_rec.domain;
-        v_sum_easy := v_sum_easy + 1;
-      else
-        update tmp_blueprint_alloc set medium_cnt = medium_cnt + 1, rem_cnt = rem_cnt - 1 where domain = v_rec.domain;
-        v_sum_medium := v_sum_medium + 1;
-      end if;
-      v_rec.rem_cnt := v_rec.rem_cnt - 1;
-    end loop;
+    exit when v_sum_hard >= v_target_hard;
+    update tmp_blueprint_alloc
+    set hard_cnt = hard_cnt + 1,
+        rem_cnt = rem_cnt - 1
+    where domain = v_rec.domain;
+    v_sum_hard := v_sum_hard + 1;
   end loop;
+
+  -- 2. Easy remainder seats ordered by largest fractional remainder (eb.count * eb.easy_pct) % 100
+  for v_rec in
+    select a.domain
+    from tmp_blueprint_alloc a
+    join public.exam_blueprints eb
+      on eb.track = v_app.track and eb.stage = 2 and eb.domain = a.domain
+    where a.rem_cnt > 0
+    order by ((eb.count * eb.easy_pct) % 100) desc, a.domain asc
+  loop
+    exit when v_sum_easy >= v_target_easy;
+    update tmp_blueprint_alloc
+    set easy_cnt = easy_cnt + 1,
+        rem_cnt = rem_cnt - 1
+    where domain = v_rec.domain;
+    v_sum_easy := v_sum_easy + 1;
+  end loop;
+
+  -- 3. Remaining remainder seats go to medium_cnt
+  update tmp_blueprint_alloc
+  set medium_cnt = medium_cnt + rem_cnt,
+      rem_cnt = 0
+  where rem_cnt > 0;
 
   -- Draw random active questions per domain and difficulty
   for v_rec in select * from tmp_blueprint_alloc order by domain loop

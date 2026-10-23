@@ -137,6 +137,119 @@ export interface SettingRow {
   updated_at: string;
 }
 
+export type QuestionDifficulty = "easy" | "medium" | "hard";
+export type QuestionType = "mcq" | "numeric" | "code_reading";
+
+export interface QuestionOption {
+  id: string;
+  text: string;
+}
+
+export interface Question {
+  id: string;
+  track: Track;
+  stage: number;
+  domain: string;
+  difficulty: QuestionDifficulty;
+  type: QuestionType;
+  stem: string;
+  code_snippet: string | null;
+  options: QuestionOption[] | null;
+  tolerance: number;
+  active: boolean;
+  times_used: number;
+  times_correct: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServedQuestion {
+  attempt_id: string;
+  question_index: number;
+  total_questions: number;
+  question_id: string;
+  domain: string;
+  type: QuestionType;
+  stem: string;
+  code_snippet: string | null;
+  options: QuestionOption[] | null;
+  deadline_at: string;
+  remaining_seconds: number;
+}
+
+export interface ExamBlueprint {
+  id: string;
+  track: Track;
+  stage: number;
+  domain: string;
+  count: number;
+  easy_pct: number;
+  medium_pct: number;
+  hard_pct: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DomainScoreBreakdown {
+  correct: number;
+  total: number;
+  percent: number;
+}
+
+export interface ExamAttempt {
+  id: string;
+  application_id: string;
+  stage: number;
+  started_at: string;
+  deadline_at: string;
+  finished_at: string | null;
+  question_ids: string[];
+  current_index: number;
+  score: number | null;
+  domain_scores: Record<string, DomainScoreBreakdown>;
+  status: "in_progress" | "submitted" | "timed_out" | "reset_by_admin";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StageResult {
+  id: string;
+  application_id: string;
+  stage: number;
+  raw_score: number;
+  percent: number;
+  passed: boolean;
+  details: {
+    attempt_id?: string;
+    total_questions?: number;
+    correct_count?: number;
+    attempt_status?: string;
+    domain_scores?: Record<string, DomainScoreBreakdown>;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IntegrityEvent {
+  id: string;
+  attempt_ref: string;
+  application_id: string;
+  type: "tab_hidden" | "fullscreen_exit" | "flagged_similarity" | "late_paste";
+  at: string;
+  meta: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export const DOMAIN_LABELS: Record<string, string> = {
+  python_data: "Python & Data Handling",
+  stats_ml: "Statistics & ML Fundamentals",
+  eval_debugging: "Evaluation & Debugging",
+  dl_nlp: "Deep Learning & NLP Basics",
+  llm_apps: "LLM Applications",
+  eng_practice: "Engineering Practice",
+};
+
 export const TRACK_LABELS: Record<Track, string> = {
   ai: "Artificial Intelligence (AI)",
   iot: "Internet of Things (IoT)",

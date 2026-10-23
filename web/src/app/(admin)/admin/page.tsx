@@ -8,6 +8,7 @@ import type {
   IdDocument,
   Institution,
   Profile,
+  Question,
   SettingRow,
 } from "@/lib/types/database";
 
@@ -34,6 +35,7 @@ export default async function AdminPage() {
 
   const [
     { data: applicationsData },
+    { data: questionsData },
     { data: profilesData },
     { data: idDocsData },
     { data: institutionsData },
@@ -41,6 +43,7 @@ export default async function AdminPage() {
     { data: settingsData },
   ] = await Promise.all([
     supabase.from("applications").select("*").order("created_at", { ascending: false }),
+    supabase.from("questions").select("*").order("created_at", { ascending: false }),
     supabase.from("profiles").select("*").order("created_at", { ascending: false }),
     supabase
       .from("id_documents")
@@ -53,6 +56,7 @@ export default async function AdminPage() {
   ]);
 
   const applications = (applicationsData as Application[] | null) ?? [];
+  const questions = (questionsData as Question[] | null) ?? [];
   const profiles = (profilesData as Profile[] | null) ?? [];
   const idDocs = (idDocsData as IdDocument[] | null) ?? [];
   const institutions = (institutionsData as Institution[] | null) ?? [];
@@ -93,6 +97,7 @@ export default async function AdminPage() {
 
         <AdminConsoleClient
           rows={rows}
+          questions={questions}
           institutions={institutions}
           profiles={profiles}
           auditLogs={auditLogs}
