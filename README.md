@@ -1,0 +1,134 @@
+# Talent Vetting Platform
+
+A single web platform that vets and certifies engineering talent across three tracks (**AI**, **IoT**, and **Robotics**) through five sequential stages:
+
+0. **Stage 0:** Application & Identity Check (Gate)
+1. **Stage 1:** Foundation Screen (15% weight, 60% minimum)
+2. **Stage 2:** Technical Exam (25% weight, 60% minimum)
+3. **Stage 3:** Practical Project (35% weight, 60% minimum + ≥40% per part)
+4. **Stage 4:** Live Technical Defence (25% weight, minimum average 2.5 / 4.0)
+
+Source-of-truth specifications live in [`/docs`](./docs):
+- [`docs/platform-design.md`](./docs/platform-design.md)
+- [`docs/blueprint-ai.md`](./docs/blueprint-ai.md)
+- [`docs/blueprint-iot.md`](./docs/blueprint-iot.md)
+- [`docs/blueprint-robotics.md`](./docs/blueprint-robotics.md)
+
+---
+
+## Repository Structure
+
+```text
+/
+├── AGENTS.md                        # Engineering, security, and scope rules
+├── README.md                        # Setup, environment variables, and test guide
+├── .env.example                     # Environment variable template
+├── docs/                            # Assessment blueprints and architecture design
+├── supabase/                        # Supabase CLI configuration, migrations, seeds & SQL tests
+│   ├── config.toml
+│   ├── seed.sql
+│   ├── migrations/
+│   │   └── 0001_m1_foundation.sql
+│   └── tests/
+│       └── m1_access_and_status.test.sql
+├── web/                             # Next.js (App Router, strict TypeScript, Tailwind CSS)
+│   ├── src/
+│   │   ├── actions/                 # Server Actions (Auth, Stage 0 onboarding, Admin ID verification)
+│   │   ├── app/                     # Next.js App Router pages
+│   │   ├── components/              # Accessible, low-bandwidth UI components
+│   │   └── lib/                     # Supabase clients, strict database types, validators
+│   └── tests/                       # Vitest unit & integration test suites
+└── grader/                          # Python 3 Docker grader worker (introduced in M4)
+```
+
+---
+
+## Prerequisites
+
+- **Node.js** 20+ and **npm**
+- **Docker** (running locally for the Supabase CLI stack)
+- **Supabase CLI** (`npx supabase`)
+
+---
+
+## Local Development Setup
+
+### 1. Start the Local Supabase Stack
+
+From the repository root, start the local Supabase containers and apply all migrations + seed data cleanly:
+
+```bash
+npx supabase start
+npx supabase db reset
+```
+
+### 2. Configure Environment Variables
+
+Copy `.env.example` to `web/.env.local` and fill in the local keys printed by `npx supabase status`:
+
+```bash
+cp .env.example web/.env.local
+```
+
+| Variable | Scope | Description |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Public | Local Supabase API URL (`http://127.0.0.1:54321`) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Local Supabase anonymous/public JWT key |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Server-only** | Used only on the server to issue 60-second signed ID URLs after `log_admin_id_view` writes to `audit_log`. Never exposed to the browser bundle. |
+| `NEXT_PUBLIC_SITE_URL` | Public | Local web app origin (`http://localhost:3000`) |
+
+### 3. Install Dependencies & Run the Web App
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000` in your browser.
+Local confirmation emails sent during registration can be viewed at the local Mailpit/Inbucket web interface (`http://127.0.0.1:54324`).
+
+### 4. Seeded Test Accounts (`supabase/seed.sql`)
+
+All seeded accounts use the password `Password123!`:
+
+| Role | Email | Notes |
+| --- | --- | --- |
+| Admin | `admin@vetting.local` | Full access to `/admin` (ID verification, institutions, roles, audit log) |
+| Reviewer 1 | `reviewer1@vetting.local` | Attached to UNILAG (`blind` to candidate identities) |
+| Reviewer 2 | `reviewer2@vetting.local` | Attached to ABU (`blind` to candidate identities) |
+| Candidate 1 | `candidate1@vetting.local` | Sample candidate (`Chinedu Okafor`) |
+| Candidate 2 | `candidate2@vetting.local` | Sample candidate (`Amina Yusuf`) |
+
+---
+
+## Testing & Verification
+
+### 1. Database & RLS Tests (pgTAP)
+
+Run the SQL test suite directly against local Postgres:
+
+```bash
+npx supabase test db
+```
+
+### 2. Type Check & Linting
+
+```bash
+cd web
+npm run typecheck
+npm run lint
+```
+
+### 3. Unit & Integration Tests (Vitest)
+
+```bash
+cd web
+npm test
+```
+
+---
+
+## Grader Worker (`grader/`)
+
+The Python 3 Docker grader worker (`predictions` and `retrieval` graders) is scheduled for **Milestone 4 (M4)**, and the Judge0 CE sandbox is scheduled for **Milestone 7 (M7 - IoT Track)** per Section 10 of [`docs/platform-design.md`](./docs/platform-design.md).
