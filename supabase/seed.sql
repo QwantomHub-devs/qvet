@@ -107,7 +107,9 @@ declare
     {"id": "00000000-0000-0000-0000-000000000002", "email": "reviewer1@vetting.local", "role": "reviewer", "full_name": "Dr. Adaobi Nwachukwu", "inst_id": "11111111-1111-1111-1111-111111111101"},
     {"id": "00000000-0000-0000-0000-000000000003", "email": "reviewer2@vetting.local", "role": "reviewer", "full_name": "Engr. Tunde Bakare", "inst_id": "11111111-1111-1111-1111-111111111102"},
     {"id": "00000000-0000-0000-0000-000000000004", "email": "candidate1@vetting.local", "role": "candidate", "full_name": "Chinedu Okafor", "inst_id": "11111111-1111-1111-1111-111111111101"},
-    {"id": "00000000-0000-0000-0000-000000000005", "email": "candidate2@vetting.local", "role": "candidate", "full_name": "Amina Yusuf", "inst_id": "11111111-1111-1111-1111-111111111102"}
+    {"id": "00000000-0000-0000-0000-000000000005", "email": "candidate2@vetting.local", "role": "candidate", "full_name": "Amina Yusuf", "inst_id": "11111111-1111-1111-1111-111111111102"},
+    {"id": "00000000-0000-0000-0000-000000000006", "email": "reviewer3@vetting.local", "role": "reviewer", "full_name": "Dr. Kemi Adeyemi", "inst_id": "11111111-1111-1111-1111-111111111103"},
+    {"id": "00000000-0000-0000-0000-000000000007", "email": "reviewer4@vetting.local", "role": "reviewer", "full_name": "Engr. Ibrahim Musa", "inst_id": "11111111-1111-1111-1111-111111111104"}
   ]'::jsonb;
   v_u jsonb;
   v_uid uuid;
@@ -319,6 +321,245 @@ begin
         set correct = excluded.correct,
             explanation = excluded.explanation;
       end loop;
+    end loop;
+  end loop;
+end;
+$$;
+
+
+-- =============================================================================
+-- 5. Milestone 3 (M3): Stage 1 Rotating Prompts, Rubrics & Part C Logic Bank
+-- =============================================================================
+
+-- 5.1 Rotating Stage 1 Prompts (4 Written + 4 Video for AI Track)
+insert into public.prompts (id, track, stage, kind, title, prompt_text, target_words, max_duration_seconds, active)
+values
+  (
+    '44444444-4444-4444-4444-000000000001',
+    'ai', 1, 'text',
+    'Explaining High Accuracy on Imbalanced Data',
+    'A fraud detection model reaches 95% accuracy on historical transactions, where only 5% of transactions are fraudulent. Explain to a non-technical operations manager (in about 150 words) why this 95% accurate model may still be useless in production, and what you would check instead.',
+    150, 120, true
+  ),
+  (
+    '44444444-4444-4444-4444-000000000002',
+    'ai', 1, 'text',
+    'Explaining Data Leakage to a Product Lead',
+    'A teammate trained a customer churn model that scored 99% accuracy during testing, but failed badly in its first week with real customers. Explain to a non-technical product manager (in about 150 words) how future information can accidentally leak into training data and how you prevent it.',
+    150, 120, true
+  ),
+  (
+    '44444444-4444-4444-4444-000000000003',
+    'ai', 1, 'text',
+    'Why AI Assistants Hallucinate',
+    'Your company wants to connect a language model to internal support documents. Explain to a non-technical manager (in about 150 words) why a language model can still give confident wrong answers and what practical safeguards reduce this risk.',
+    150, 120, true
+  ),
+  (
+    '44444444-4444-4444-4444-000000000004',
+    'ai', 1, 'text',
+    'When Simple Rules Beat Machine Learning',
+    'A manager asks you to train a deep learning model to sort incoming invoices by currency and total amount. Explain to them in plain English (in about 150 words) why a deterministic rule or simple script is better here and when machine learning actually makes sense.',
+    150, 120, true
+  ),
+  (
+    '44444444-4444-4444-4444-000000000005',
+    'ai', 1, 'video',
+    'Pushing Back on an Unready Deployment',
+    'A client asks you to deploy a prediction model to production tomorrow morning, but your evaluation shows it fails on an important group of users. Record a 2-minute video explaining what you would say to the client, what evidence you would show, and what next step you would propose.',
+    150, 120, true
+  ),
+  (
+    '44444444-4444-4444-4444-000000000006',
+    'ai', 1, 'video',
+    'Handling Unclear Requirements Quickly',
+    'You are working remotely and discover halfway through a sprint that the dataset labels do not match what the business team described. Record a 2-minute video explaining how you investigate the mismatch and communicate the impact to your team lead.',
+    150, 120, true
+  ),
+  (
+    '44444444-4444-4444-4444-000000000007',
+    'ai', 1, 'video',
+    'Diagnosing a Sudden Drop in Model Quality',
+    'Users report that your deployed support-ticket classifier started misclassifying urgent tickets this week even though no code changed. Record a 2-minute video walking through the first three things you would check and how you would update stakeholders.',
+    150, 120, true
+  ),
+  (
+    '44444444-4444-4444-4444-000000000008',
+    'ai', 1, 'video',
+    'Admitting a Mistake in an Evaluation Report',
+    'After sharing promising model metrics with your team, you realise your evaluation script included duplicate rows between the training and test sets. Record a 2-minute video explaining how you handle the situation with your team.',
+    150, 120, true
+  )
+on conflict (id) do update
+set title = excluded.title,
+    prompt_text = excluded.prompt_text,
+    active = excluded.active;
+
+-- 5.2 Editable Stage 1 Rubrics & Criteria (Section 4 of blueprint-ai.md)
+insert into public.rubrics (id, stage, track, part, title, description, active)
+values
+  (
+    '55555555-5555-5555-5555-000000000001',
+    1, 'all', 's1_text',
+    'Stage 1 Part A: Written Explanation Rubric',
+    'Scores the candidate''s ~150-word technical explanation for a non-technical manager (1 to 4 per criterion).',
+    true
+  ),
+  (
+    '55555555-5555-5555-5555-000000000002',
+    1, 'all', 's1_video',
+    'Stage 1 Part B: Recorded Video Scenario Rubric',
+    'Scores the candidate''s 2-minute recorded response to a realistic remote engineering scenario (1 to 4 per criterion).',
+    true
+  )
+on conflict (id) do update
+set title = excluded.title,
+    description = excluded.description,
+    active = excluded.active;
+
+insert into public.rubric_criteria (id, rubric_id, slug, criterion, weight, scale_min, scale_max, anchors, sort_order)
+values
+  -- Part A (s1_text): clarity, structure, accuracy, grammar
+  (
+    '66666666-6666-6666-6666-000000000001',
+    '55555555-5555-5555-5555-000000000001',
+    'clarity',
+    'Clarity for a Non-Technical Reader',
+    1.0, 1, 4,
+    '{"1": "Heavy jargon or confusing phrasing; a non-technical manager cannot follow the point.", "2": "Main point is visible with effort, but relies on undefined technical terms.", "3": "Clear, plain English explanation that a non-technical manager can immediately understand.", "4": "Exceptionally clear and concrete; uses a helpful everyday example without talking down to the reader."}'::jsonb,
+    1
+  ),
+  (
+    '66666666-6666-6666-6666-000000000002',
+    '55555555-5555-5555-5555-000000000001',
+    'structure',
+    'Structure and Conciseness',
+    1.0, 1, 4,
+    '{"1": "Disorganised or rambling; misses the core question or far outside the target length.", "2": "Covers some points but jumps between ideas without a clear conclusion.", "3": "Logical progression (problem, why it happens, what to do next) within roughly 150 words.", "4": "Crisp, well-structured paragraphs where every sentence adds value and leads to a clear action."}'::jsonb,
+    2
+  ),
+  (
+    '66666666-6666-6666-6666-000000000003',
+    '55555555-5555-5555-5555-000000000001',
+    'accuracy',
+    'Technical Accuracy',
+    1.0, 1, 4,
+    '{"1": "Contains fundamental technical misconceptions or proposes an invalid fix.", "2": "Partially accurate but glosses over the key mechanism or recommends a weak check.", "3": "Technically sound explanation of both the underlying issue and the practical remedy.", "4": "Precise and insightful; accurately captures nuances and trade-offs while staying accessible."}'::jsonb,
+    3
+  ),
+  (
+    '66666666-6666-6666-6666-000000000004',
+    '55555555-5555-5555-5555-000000000001',
+    'grammar',
+    'Grammar and Readability',
+    1.0, 1, 4,
+    '{"1": "Frequent errors make the meaning ambiguous or difficult to read.", "2": "Noticeable errors that slow down reading, though the overall meaning is recoverable.", "3": "Clean, readable sentences suitable for written workplace communication.", "4": "Polished, natural professional writing with zero ambiguity."}'::jsonb,
+    4
+  ),
+  -- Part B (s1_video): clarity, reasoning, professionalism
+  (
+    '66666666-6666-6666-6666-000000000005',
+    '55555555-5555-5555-5555-000000000002',
+    'clarity',
+    'Spoken Clarity',
+    1.0, 1, 4,
+    '{"1": "Hard to follow; unstructured or fails to address the scenario.", "2": "Understandable with effort; repeats points or buries the main message.", "3": "Communicates clearly and directly within the 2-minute window.", "4": "Structured, concise, and adapts tone effectively for a remote engineering team."}'::jsonb,
+    1
+  ),
+  (
+    '66666666-6666-6666-6666-000000000006',
+    '55555555-5555-5555-5555-000000000002',
+    'reasoning',
+    'Engineering Reasoning and Judgment',
+    1.0, 1, 4,
+    '{"1": "Ignores the risk or proposes reckless action without checking evidence.", "2": "Identifies the problem but offers a vague or impractical next step.", "3": "Proposes sensible diagnostic steps, explains trade-offs, and recommends a realistic path.", "4": "Strong engineering judgment: balances business urgency with technical risk and proposes concrete verification."}'::jsonb,
+    2
+  ),
+  (
+    '66666666-6666-6666-6666-000000000007',
+    '55555555-5555-5555-5555-000000000002',
+    'professionalism',
+    'Honesty and Professionalism',
+    1.0, 1, 4,
+    '{"1": "Bluffs, blames others, or dismisses stakeholder concerns.", "2": "Defensive or overly passive when explaining risks.", "3": "Calm, honest about limitations, and respectful of stakeholders.", "4": "Demonstrates mature ownership: transparent about risks and constructive about solutions."}'::jsonb,
+    3
+  )
+on conflict (id) do update
+set criterion = excluded.criterion,
+    anchors = excluded.anchors,
+    sort_order = excluded.sort_order;
+
+-- 5.3 Stage 1 Part C Blueprint (15 Logic & Numeracy Questions, 20 minutes)
+insert into public.exam_blueprints (track, stage, domain, count, easy_pct, medium_pct, hard_pct)
+values
+  ('ai', 1, 'logic_patterns', 5, 40, 40, 20),
+  ('ai', 1, 'probability_numeracy', 5, 40, 40, 20),
+  ('ai', 1, 'charts_data', 5, 40, 40, 20)
+on conflict (track, stage, domain) do update
+set count = excluded.count,
+    easy_pct = excluded.easy_pct,
+    medium_pct = excluded.medium_pct,
+    hard_pct = excluded.hard_pct;
+
+-- Seed 15 clearly marked FAKE SAMPLE Stage 1 Logic & Numeracy questions (5 per domain: 2 easy, 2 medium, 1 hard)
+do $$
+declare
+  v_domains text[] := array['logic_patterns', 'probability_numeracy', 'charts_data'];
+  v_diffs text[] := array['easy', 'easy', 'medium', 'medium', 'hard'];
+  v_d_idx int;
+  v_i int;
+  v_seq int := 0;
+  v_qid uuid;
+  v_dom text;
+  v_diff text;
+begin
+  for v_d_idx in 1..array_length(v_domains, 1) loop
+    v_dom := v_domains[v_d_idx];
+    for v_i in 1..5 loop
+      v_seq := v_seq + 1;
+      v_diff := v_diffs[v_i];
+      v_qid := ('33333333-3333-3333-0001-' || lpad(v_seq::text, 12, '0'))::uuid;
+
+      insert into public.questions (
+        id, track, stage, domain, difficulty, type, stem, code_snippet, options, tolerance, active
+      )
+      values (
+        v_qid,
+        'ai',
+        1,
+        v_dom,
+        v_diff,
+        'mcq',
+        format(
+          '[FAKE SAMPLE S1 LOGIC #%s - NOT REAL CONTENT] (%s / %s) Sample logic & numeracy item %s for Stage 1 Part C. Which option is marked correct for testing?',
+          v_seq, v_dom, v_diff, v_i
+        ),
+        null,
+        jsonb_build_array(
+          jsonb_build_object('id', 'A', 'text', 'Option A (Correct Stage 1 logic choice)'),
+          jsonb_build_object('id', 'B', 'text', 'Option B (Distractor 1)'),
+          jsonb_build_object('id', 'C', 'text', 'Option C (Distractor 2)'),
+          jsonb_build_object('id', 'D', 'text', 'Option D (Distractor 3)')
+        ),
+        0,
+        true
+      )
+      on conflict (id) do update
+      set domain = excluded.domain,
+          difficulty = excluded.difficulty,
+          stem = excluded.stem,
+          options = excluded.options,
+          active = excluded.active;
+
+      insert into public.question_keys (question_id, correct, explanation)
+      values (
+        v_qid,
+        'A',
+        format('Fake sample answer key for Stage 1 logic item #%s', v_seq)
+      )
+      on conflict (question_id) do update
+      set correct = excluded.correct,
+          explanation = excluded.explanation;
     end loop;
   end loop;
 end;
