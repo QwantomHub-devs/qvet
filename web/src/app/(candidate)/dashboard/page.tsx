@@ -66,9 +66,10 @@ export default async function CandidateDashboardPage() {
   const cohorts = (cohortsData as Cohort[] | null) ?? [];
 
   let currentIdDoc: IdDocument | null = null;
+  let stage1Result: StageResult | null = null;
   let stage2Result: StageResult | null = null;
   if (application) {
-    const [{ data: idDocData }, { data: s2Data }] = await Promise.all([
+    const [{ data: idDocData }, { data: s1Data }, { data: s2Data }] = await Promise.all([
       supabase
         .from("id_documents")
         .select("*")
@@ -79,10 +80,17 @@ export default async function CandidateDashboardPage() {
         .from("stage_results")
         .select("*")
         .eq("application_id", application.id)
+        .eq("stage", 1)
+        .maybeSingle(),
+      supabase
+        .from("stage_results")
+        .select("*")
+        .eq("application_id", application.id)
         .eq("stage", 2)
         .maybeSingle(),
     ]);
     currentIdDoc = (idDocData as IdDocument | null) ?? null;
+    stage1Result = (s1Data as StageResult | null) ?? null;
     stage2Result = (s2Data as StageResult | null) ?? null;
   }
 
@@ -165,13 +173,50 @@ export default async function CandidateDashboardPage() {
               </section>
             )}
 
-            {application.status === "approved" && (
-              <section className="rounded-lg border border-emerald-300 bg-emerald-50 p-5 text-sm text-emerald-950">
-                <h2 className="font-bold">Stage 0 Complete — Identity Approved</h2>
-                <p className="mt-1">
-                  Your identity check is complete and your application has automatically advanced to
-                  Stage 1 (Foundation Screen).
-                </p>
+            {(application.status === "approved" || application.status === "s1_open") && (
+              <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-xs space-y-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Stage 1: Foundation Screen (45 Minutes Total · 15% of Overall Score)
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Complete all three parts to advance to Stage 2: Part A (15-min written
+                    explanation with 10-second autosave), Part B (2-minute recorded video scenario
+                    with file-upload fallback), and Part C (15 logic &amp; numeracy questions).
+                  </p>
+                </div>
+                <Link
+                  href="/stage1"
+                  className="inline-block rounded bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  Open Stage 1 Foundation Screen →
+                </Link>
+              </section>
+            )}
+
+            {stage1Result && (
+              <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-xs space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">
+                      Stage 1 Foundation Screen Result: {stage1Result.percent}%
+                    </h2>
+                    <p className="text-xs text-slate-600">
+                      Part A (40%): {stage1Result.details?.part_a_percent ?? "—"}% · Part B (30%):{" "}
+                      {stage1Result.details?.part_b_percent ?? "—"}% · Part C (30%):{" "}
+                      {stage1Result.details?.part_c_percent ?? "—"}% · Minimum to pass: 60%
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded border px-2.5 py-1 text-xs font-semibold ${
+                      stage1Result.passed
+                        ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                        : "border-red-300 bg-red-100 text-red-900"
+                    }`}
+                  >
+                    {stage1Result.passed ? "Passed" : "Did Not Pass"}
+                  </span>
+                </div>
               </section>
             )}
 

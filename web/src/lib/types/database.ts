@@ -225,6 +225,11 @@ export interface StageResult {
     correct_count?: number;
     attempt_status?: string;
     domain_scores?: Record<string, DomainScoreBreakdown>;
+    part_a_rubric_avg?: number;
+    part_a_percent?: number;
+    part_b_rubric_avg?: number;
+    part_b_percent?: number;
+    part_c_percent?: number;
   };
   created_at: string;
   updated_at: string;
@@ -241,6 +246,101 @@ export interface IntegrityEvent {
   updated_at: string;
 }
 
+export interface Stage1Prompt {
+  id: string;
+  track: Track;
+  stage: number;
+  kind: "text" | "video";
+  title: string;
+  prompt_text: string;
+  target_words: number;
+  max_duration_seconds: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Stage1Response {
+  id: string;
+  application_id: string;
+  prompt_id: string;
+  kind: "text" | "video";
+  text: string | null;
+  word_count: number;
+  storage_path: string | null;
+  file_size_bytes: number | null;
+  mime_type: string | null;
+  duration_seconds: number | null;
+  started_at: string;
+  deadline_at: string;
+  last_saved_at: string;
+  submitted_at: string | null;
+  locked: boolean;
+  final_rubric_avg: number | null;
+  final_percent: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RubricCriterion {
+  id: string;
+  rubric_id?: string;
+  slug: string;
+  criterion: string;
+  weight: number;
+  scale_min: number;
+  scale_max: number;
+  anchors: Record<string, string>;
+  sort_order: number;
+}
+
+export interface Rubric {
+  id: string;
+  stage?: number;
+  track?: string;
+  part?: string;
+  title: string;
+  description: string | null;
+  criteria: RubricCriterion[];
+}
+
+export interface ReviewerQueueItem {
+  assignment_id: string;
+  stage: number;
+  part: "s1_text" | "s1_video" | "s3_project" | "s4_defence";
+  review_round: 1 | 2 | 3;
+  is_second_review: boolean;
+  is_third_review: boolean;
+  status: "assigned" | "submitted" | "cancelled";
+  avg_score: number | null;
+  due_at: string;
+  submitted_at: string | null;
+  anonymous_candidate_ref: string;
+  track: Track;
+  response_id: string;
+  response_kind: "text" | "video";
+  response_text: string | null;
+  word_count: number;
+  storage_path: string | null;
+  mime_type: string | null;
+  duration_seconds: number | null;
+  response_submitted_at: string | null;
+  prompt_title: string;
+  prompt_text: string;
+  rubric: Rubric | null;
+  my_scores: Array<{
+    criterion_id: string;
+    score: number;
+    comment: string | null;
+  }>;
+  peer_reviews: Array<{
+    assignment_id: string;
+    review_round: number;
+    avg_score: number;
+    submitted_at: string;
+  }>;
+}
+
 export const DOMAIN_LABELS: Record<string, string> = {
   python_data: "Python & Data Handling",
   stats_ml: "Statistics & ML Fundamentals",
@@ -248,6 +348,9 @@ export const DOMAIN_LABELS: Record<string, string> = {
   dl_nlp: "Deep Learning & NLP Basics",
   llm_apps: "LLM Applications",
   eng_practice: "Engineering Practice",
+  logic_patterns: "Logic & Patterns",
+  probability_numeracy: "Probability & Numeracy",
+  charts_data: "Reading Charts & Data",
 };
 
 export const TRACK_LABELS: Record<Track, string> = {

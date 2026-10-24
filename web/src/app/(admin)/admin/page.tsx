@@ -9,6 +9,7 @@ import type {
   Institution,
   Profile,
   Question,
+  RubricCriterion,
   SettingRow,
 } from "@/lib/types/database";
 
@@ -41,6 +42,7 @@ export default async function AdminPage() {
     { data: institutionsData },
     { data: auditLogsData },
     { data: settingsData },
+    { data: rubricCriteriaData },
   ] = await Promise.all([
     supabase.from("applications").select("*").order("created_at", { ascending: false }),
     supabase.from("questions").select("*").order("created_at", { ascending: false }),
@@ -53,6 +55,7 @@ export default async function AdminPage() {
     supabase.from("institutions").select("*").order("name", { ascending: true }),
     supabase.from("audit_log").select("*").order("at", { ascending: false }).limit(100),
     supabase.from("settings").select("*").order("key", { ascending: true }),
+    supabase.from("rubric_criteria").select("*").order("sort_order", { ascending: true }),
   ]);
 
   const applications = (applicationsData as Application[] | null) ?? [];
@@ -62,6 +65,7 @@ export default async function AdminPage() {
   const institutions = (institutionsData as Institution[] | null) ?? [];
   const auditLogs = (auditLogsData as AuditLogEntry[] | null) ?? [];
   const settings = (settingsData as SettingRow[] | null) ?? [];
+  const rubricCriteria = (rubricCriteriaData as RubricCriterion[] | null) ?? [];
 
   const profileByUserId = new Map(profiles.map((p) => [p.user_id, p]));
   const docByAppId = new Map(idDocs.map((d) => [d.application_id, d]));
@@ -102,6 +106,7 @@ export default async function AdminPage() {
           profiles={profiles}
           auditLogs={auditLogs}
           settings={settings}
+          rubricCriteria={rubricCriteria}
         />
       </main>
     </div>

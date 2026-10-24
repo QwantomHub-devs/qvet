@@ -30,13 +30,15 @@ Source-of-truth specifications live in [`/docs`](./docs):
 │   ├── seed.sql
 │   ├── migrations/
 │   │   ├── 0001_m1_foundation.sql
-│   │   └── 0002_m2_exam_engine.sql
+│   │   ├── 0002_m2_exam_engine.sql
+│   │   └── 0003_m3_stage1_and_reviews.sql
 │   └── tests/
 │       ├── m1_access_and_status.test.sql
-│       └── m2_exam_engine.test.sql
+│       ├── m2_exam_engine.test.sql
+│       └── m3_stage1_and_reviews.test.sql
 ├── web/                             # Next.js (App Router, strict TypeScript, Tailwind CSS)
 │   ├── src/
-│   │   ├── actions/                 # Server Actions (Auth, Stage 0, Stage 2 Exam, Admin)
+│   │   ├── actions/                 # Server Actions (Auth, Stage 0, Stage 1, Stage 2, Reviewer, Admin)
 │   │   ├── app/                     # Next.js App Router pages
 │   │   ├── components/              # Accessible, low-bandwidth UI components
 │   │   └── lib/                     # Supabase clients, strict database types, validators
@@ -97,11 +99,13 @@ All seeded accounts use the password `Password123!`:
 
 | Role        | Email                      | Notes                                                                     |
 | ----------- | -------------------------- | ------------------------------------------------------------------------- |
-| Admin       | `admin@vetting.local`      | Full access to `/admin` (ID verification, institutions, roles, audit log) |
+| Admin       | `admin@vetting.local`      | Full access to `/admin` (ID verification, rubrics, questions, audit log)  |
 | Reviewer 1  | `reviewer1@vetting.local`  | Attached to UNILAG (`blind` to candidate identities)                      |
 | Reviewer 2  | `reviewer2@vetting.local`  | Attached to ABU (`blind` to candidate identities)                         |
-| Candidate 1 | `candidate1@vetting.local` | Sample candidate (`Chinedu Okafor`)                                       |
-| Candidate 2 | `candidate2@vetting.local` | Sample candidate (`Amina Yusuf`)                                          |
+| Reviewer 3  | `reviewer3@vetting.local`  | Attached to UNN (`blind` to candidate identities)                         |
+| Reviewer 4  | `reviewer4@vetting.local`  | Attached to AltSchool Africa (`blind` to candidate identities)            |
+| Candidate 1 | `candidate1@vetting.local` | Sample candidate (`Chinedu Okafor`, UNILAG)                               |
+| Candidate 2 | `candidate2@vetting.local` | Sample candidate (`Amina Yusuf`, ABU)                                     |
 
 ---
 
@@ -129,6 +133,15 @@ npm run lint
 cd web
 npm test
 ```
+
+---
+
+## Stage 1 Foundation Screen & Blind Review Engine (M3)
+
+- **Part A — Written Explanation (40% of Stage 1 · 15 Minutes):** Draws a rotating prompt at random, autosaves every 10 seconds (`save_text_response`), locks at `deadline_at` or manual submit (`submit_text_response`), and automatically assigns 2 non-conflicting blind reviewers.
+- **Part B — Recorded Video Scenario (30% of Stage 1 · 10 Minutes · Max 2-Min Clip):** Records in-browser at ~480p low bitrate via `MediaRecorder` with a file-upload fallback (`<= 25 MB` into private bucket `stage1-videos`), locks via `submit_video_response`, and assigns 2 non-conflicting blind reviewers.
+- **Part C — Logic & Numeracy (30% of Stage 1 · 20 Minutes · 15 Questions):** Reuses the M2 exam engine (`start_exam(app_id, 1)`) across `logic_patterns` (5), `probability_numeracy` (5), and `charts_data` (5).
+- **Blind Review & Automatic Third-Reviewer Rule (`/reviewer`):** Reviewers see only anonymous candidate identifiers (`CAND-...`), never candidate names or institutions, cannot be assigned work from their own institution, and cannot see peer reviewer scores until they submit their own review. If the first two reviewers' average scores differ by `> 1.0` point, a third blind reviewer is assigned automatically.
 
 ---
 

@@ -160,17 +160,15 @@ describe("M2 Exam Engine: Question Bank, Blueprint Draw, Timer, Locking, Numeric
 
     await db.exec(SUPABASE_BASE_BOOTSTRAP_SQL);
 
-    const m1Sql = fs.readFileSync(
-      path.join(REPO_ROOT, "supabase/migrations/0001_m1_foundation.sql"),
-      "utf8"
-    );
-    await db.exec(m1Sql);
-
-    const m2Sql = fs.readFileSync(
-      path.join(REPO_ROOT, "supabase/migrations/0002_m2_exam_engine.sql"),
-      "utf8"
-    );
-    await db.exec(m2Sql);
+    const migrationsDir = path.join(REPO_ROOT, "supabase/migrations");
+    const migrationFiles = fs
+      .readdirSync(migrationsDir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort();
+    for (const file of migrationFiles) {
+      const migrationSql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
+      await db.exec(migrationSql);
+    }
 
     const seedSql = fs.readFileSync(path.join(REPO_ROOT, "supabase/seed.sql"), "utf8");
     await db.exec(seedSql);

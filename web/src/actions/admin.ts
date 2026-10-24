@@ -222,4 +222,43 @@ export async function toggleQuestionActiveAction(formData: FormData): Promise<Ac
   };
 }
 
+export async function updateRubricCriterionAction(
+  formData: FormData
+): Promise<ActionResult> {
+  const criterionId = String(formData.get("criterionId") ?? "").trim();
+  const criterion = String(formData.get("criterion") ?? "").trim();
+  const anchor1 = String(formData.get("anchor1") ?? "").trim();
+  const anchor2 = String(formData.get("anchor2") ?? "").trim();
+  const anchor3 = String(formData.get("anchor3") ?? "").trim();
+  const anchor4 = String(formData.get("anchor4") ?? "").trim();
+
+  if (!criterionId || !criterion) {
+    return { ok: false, error: "Criterion ID and title are required." };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("admin_update_rubric_criterion", {
+    p_criterion_id: criterionId,
+    p_criterion: criterion,
+    p_anchors: {
+      "1": anchor1,
+      "2": anchor2,
+      "3": anchor3,
+      "4": anchor4,
+    },
+  });
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/reviewer");
+  return {
+    ok: true,
+    message: "Rubric criterion and score anchors updated.",
+  };
+}
+
+
 

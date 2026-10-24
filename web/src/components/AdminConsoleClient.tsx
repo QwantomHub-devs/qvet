@@ -7,6 +7,7 @@ import {
   setUserRoleAction,
   toggleQuestionActiveAction,
   unlockStage2Action,
+  updateRubricCriterionAction,
   upsertInstitutionAction,
   verifyIdDocumentAction,
 } from "@/actions/admin";
@@ -20,6 +21,7 @@ import {
   type Institution,
   type Profile,
   type Question,
+  type RubricCriterion,
   type SettingRow,
 } from "@/lib/types/database";
 
@@ -37,6 +39,7 @@ interface AdminConsoleClientProps {
   profiles: Profile[];
   auditLogs: AuditLogEntry[];
   settings: SettingRow[];
+  rubricCriteria?: RubricCriterion[];
 }
 
 const SAMPLE_CSV_TEMPLATE = `track,stage,domain,difficulty,type,stem,code_snippet,option_a,option_b,option_c,option_d,correct,tolerance,explanation
@@ -50,9 +53,10 @@ export function AdminConsoleClient({
   profiles,
   auditLogs,
   settings,
+  rubricCriteria = [],
 }: AdminConsoleClientProps) {
   const [activeTab, setActiveTab] = useState<
-    "applications" | "questions" | "institutions" | "users" | "audit" | "settings"
+    "applications" | "questions" | "rubrics" | "institutions" | "users" | "audit" | "settings"
   >("applications");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [csvText, setCsvText] = useState<string>("");
@@ -168,6 +172,20 @@ export function AdminConsoleClient({
     });
   }
 
+  function handleRubricCriterionSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFeedback(null);
+    const formData = new FormData(event.currentTarget);
+    startTransition(async () => {
+      const res = await updateRubricCriterionAction(formData);
+      if (!res.ok) {
+        setFeedback({ type: "err", text: res.error ?? "Could not update rubric criterion." });
+        return;
+      }
+      setFeedback({ type: "ok", text: res.message ?? "Rubric criterion updated." });
+    });
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3" role="tablist">
@@ -175,6 +193,7 @@ export function AdminConsoleClient({
           [
             { id: "applications", label: `Applications & ID Queue (${rows.length})` },
             { id: "questions", label: `Question Bank & CSV Import (${questions.length})` },
+            { id: "rubrics", label: `Rubrics & Anchors (${rubricCriteria.length})` },
             { id: "institutions", label: `Partner Institutions (${institutions.length})` },
             { id: "users", label: `Users & Roles (${profiles.length})` },
             { id: "audit", label: `Audit Log (${auditLogs.length})` },
@@ -667,6 +686,67 @@ export function AdminConsoleClient({
               ))}
             </tbody>
           </table>
+        </section>
+      )}
+
+      {activeTab === "rubrics" && (
+        <section className="space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-5">
+            <h2 className="text-base font-bold text-slate-900">
+              Editable Reviewer Rubrics &amp; Score Anchors (1 to 4)
+            </h2>
+            <p className="mt-1 text-xs text-slate-600">
+              Changes made here are saved to the database (`rubric_criteria`) and immediately
+              reflected in the Blind Reviewer Console.
+            </p>
+          </div>
+
+          {rubricCriteria.map((rc) => (
+            <form
+              key={rc.id}
+              onSubmit={handleRubricCriterionSubmit}
+              className="rounded-lg border border-slate-200 bg-white p-5 space-y-3"
+            >
+              <input type="hidden" name="criterionId" value={rc.id} />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Criterion Title ({rc.slug})
+                  </label>
+                  <input
+                    type="text"
+                    name="criterion"
+                    defaultValue={rc.criterion}
+                    required
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-900"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="rounded bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  Save Anchors
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {[1, 2, 3, 4].map((level) => (
+                  <div key={level}>
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Anchor Description for Score {level}
+                    </label>
+                    <textarea
+                      name={`anchor${level}`}
+                      rows={2}
+                      defaultValue={rc.anchors[String(level)] ?? ""}
+                      className="mt-1 w-full rounded border border-slate-300 p-2 text-xs text-slate-800"
+                    />
+                  </div>
+                ))}
+              </div>
+            </form>
+          ))}
         </section>
       )}
 
