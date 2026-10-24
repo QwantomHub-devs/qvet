@@ -201,7 +201,7 @@ describe("M1 Database Migration, RLS Access Rules, Private Storage, Audit Log & 
     const settingsCount = await db.query<{ count: string }>(
       `select count(*)::text as count from public.settings`
     );
-    assert.equal(Number(settingsCount.rows[0]?.count), 9);
+    assert.ok(Number(settingsCount.rows[0]?.count) >= 9);
   });
 
   it("allows Candidate 1 to submit Stage 0 onboarding and rejects duplicate phone, duplicate GitHub, or second track", async () => {

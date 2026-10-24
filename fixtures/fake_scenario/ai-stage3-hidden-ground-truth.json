@@ -1,0 +1,145 @@
+{
+  "predictions": {
+    "TEST_0001": "low",
+    "TEST_0002": "low",
+    "TEST_0003": "low",
+    "TEST_0004": "low",
+    "TEST_0005": "low",
+    "TEST_0006": "low",
+    "TEST_0007": "low",
+    "TEST_0008": "low",
+    "TEST_0009": "low",
+    "TEST_0010": "low",
+    "TEST_0011": "low",
+    "TEST_0012": "low",
+    "TEST_0013": "low",
+    "TEST_0014": "low",
+    "TEST_0015": "low",
+    "TEST_0016": "medium",
+    "TEST_0017": "medium",
+    "TEST_0018": "medium",
+    "TEST_0019": "medium",
+    "TEST_0020": "medium",
+    "TEST_0021": "medium",
+    "TEST_0022": "medium",
+    "TEST_0023": "medium",
+    "TEST_0024": "medium",
+    "TEST_0025": "medium",
+    "TEST_0026": "medium",
+    "TEST_0027": "medium",
+    "TEST_0028": "medium",
+    "TEST_0029": "medium",
+    "TEST_0030": "medium",
+    "TEST_0031": "high",
+    "TEST_0032": "high",
+    "TEST_0033": "high",
+    "TEST_0034": "high",
+    "TEST_0035": "high",
+    "TEST_0036": "high",
+    "TEST_0037": "high",
+    "TEST_0038": "high",
+    "TEST_0039": "high",
+    "TEST_0040": "high",
+    "TEST_0041": "high",
+    "TEST_0042": "high",
+    "TEST_0043": "high",
+    "TEST_0044": "high",
+    "TEST_0045": "high",
+    "TEST_0046": "urgent",
+    "TEST_0047": "urgent",
+    "TEST_0048": "urgent",
+    "TEST_0049": "urgent",
+    "TEST_0050": "urgent",
+    "TEST_0051": "urgent",
+    "TEST_0052": "urgent",
+    "TEST_0053": "urgent",
+    "TEST_0054": "urgent",
+    "TEST_0055": "urgent",
+    "TEST_0056": "urgent",
+    "TEST_0057": "urgent",
+    "TEST_0058": "urgent",
+    "TEST_0059": "urgent",
+    "TEST_0060": "urgent"
+  },
+  "retrieval": {
+    "answerable": [
+      {
+        "query_id": "eval_q01",
+        "target_article_id": "kb_auth_01"
+      },
+      {
+        "query_id": "eval_q02",
+        "target_article_id": "kb_rate_02"
+      },
+      {
+        "query_id": "eval_q03",
+        "target_article_id": "kb_webhook_03"
+      },
+      {
+        "query_id": "eval_q04",
+        "target_article_id": "kb_billing_04"
+      },
+      {
+        "query_id": "eval_q05",
+        "target_article_id": "kb_export_05"
+      },
+      {
+        "query_id": "eval_q06",
+        "target_article_id": "kb_security_06"
+      },
+      {
+        "query_id": "eval_q07",
+        "target_article_id": "kb_database_07"
+      },
+      {
+        "query_id": "eval_q08",
+        "target_article_id": "kb_tenancy_08"
+      },
+      {
+        "query_id": "eval_q09",
+        "target_article_id": "kb_audit_09"
+      },
+      {
+        "query_id": "eval_q10",
+        "target_article_id": "kb_status_10"
+      },
+      {
+        "query_id": "eval_q11",
+        "target_article_id": "kb_caching_11"
+      },
+      {
+        "query_id": "eval_q12",
+        "target_article_id": "kb_ssl_12"
+      },
+      {
+        "query_id": "eval_q13",
+        "target_article_id": "kb_roles_13"
+      },
+      {
+        "query_id": "eval_q14",
+        "target_article_id": "kb_backup_14"
+      },
+      {
+        "query_id": "eval_q15",
+        "target_article_id": "kb_email_15"
+      }
+    ],
+    "unanswerable": [
+      {
+        "query_id": "eval_q16"
+      },
+      {
+        "query_id": "eval_q17"
+      },
+      {
+        "query_id": "eval_q18"
+      },
+      {
+        "query_id": "eval_q19"
+      },
+      {
+        "query_id": "eval_q20"
+      }
+    ]
+  }
+}

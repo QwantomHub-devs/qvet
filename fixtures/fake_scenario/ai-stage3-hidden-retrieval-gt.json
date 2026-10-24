@@ -1,0 +1,81 @@
+{
+  "answerable": [
+    {
+      "query_id": "eval_q01",
+      "target_article_id": "kb_auth_01"
+    },
+    {
+      "query_id": "eval_q02",
+      "target_article_id": "kb_rate_02"
+    },
+    {
+      "query_id": "eval_q03",
+      "target_article_id": "kb_webhook_03"
+    },
+    {
+      "query_id": "eval_q04",
+      "target_article_id": "kb_billing_04"
+    },
+    {
+      "query_id": "eval_q05",
+      "target_article_id": "kb_export_05"
+    },
+    {
+      "query_id": "eval_q06",
+      "target_article_id": "kb_security_06"
+    },
+    {
+      "query_id": "eval_q07",
+      "target_article_id": "kb_database_07"
+    },
+    {
+      "query_id": "eval_q08",
+      "target_article_id": "kb_tenancy_08"
+    },
+    {
+      "query_id": "eval_q09",
+      "target_article_id": "kb_audit_09"
+    },
+    {
+      "query_id": "eval_q10",
+      "target_article_id": "kb_status_10"
+    },
+    {
+      "query_id": "eval_q11",
+      "target_article_id": "kb_caching_11"
+    },
+    {
+      "query_id": "eval_q12",
+      "target_article_id": "kb_ssl_12"
+    },
+    {
+      "query_id": "eval_q13",
+      "target_article_id": "kb_roles_13"
+    },
+    {
+      "query_id": "eval_q14",
+      "target_article_id": "kb_backup_14"
+    },
+    {
+      "query_id": "eval_q15",
+      "target_article_id": "kb_email_15"
+    }
+  ],
+  "unanswerable": [
+    {
+      "query_id": "eval_q16"
+    },
+    {
+      "query_id": "eval_q17"
+    },
+    {
+      "query_id": "eval_q18"
+    },
+    {
+      "query_id": "eval_q19"
+    },
+    {
+      "query_id": "eval_q20"
+    }
+  ]
+}

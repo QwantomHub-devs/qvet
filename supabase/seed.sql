@@ -52,6 +52,16 @@ values
     'max_video_upload_bytes',
     '{"bytes": 26214400}'::jsonb,
     'Maximum file size for Stage 1 recorded video responses (25 MB)'
+  ),
+  (
+    'stage_3_a1_thresholds',
+    '{"f1_min": 0.40, "f1_max": 0.85, "max_points": 15}'::jsonb,
+    'Macro-F1 baseline and ceiling thresholds for mapping Stage 3 Part A1 predictions to 0-15 points'
+  ),
+  (
+    'max_project_upload_bytes',
+    '{"predictions": 2097152, "retrieval": 1048576, "notebook": 10485760, "code": 15728640, "writeup": 2097152}'::jsonb,
+    'Maximum byte limits per Stage 3 submission artifact'
   )
 on conflict (key) do update
 set value = excluded.value,
@@ -109,7 +119,8 @@ declare
     {"id": "00000000-0000-0000-0000-000000000004", "email": "candidate1@vetting.local", "role": "candidate", "full_name": "Chinedu Okafor", "inst_id": "11111111-1111-1111-1111-111111111101"},
     {"id": "00000000-0000-0000-0000-000000000005", "email": "candidate2@vetting.local", "role": "candidate", "full_name": "Amina Yusuf", "inst_id": "11111111-1111-1111-1111-111111111102"},
     {"id": "00000000-0000-0000-0000-000000000006", "email": "reviewer3@vetting.local", "role": "reviewer", "full_name": "Dr. Kemi Adeyemi", "inst_id": "11111111-1111-1111-1111-111111111103"},
-    {"id": "00000000-0000-0000-0000-000000000007", "email": "reviewer4@vetting.local", "role": "reviewer", "full_name": "Engr. Ibrahim Musa", "inst_id": "11111111-1111-1111-1111-111111111104"}
+    {"id": "00000000-0000-0000-0000-000000000007", "email": "reviewer4@vetting.local", "role": "reviewer", "full_name": "Engr. Ibrahim Musa", "inst_id": "11111111-1111-1111-1111-111111111104"},
+    {"id": "00000000-0000-0000-0000-000000000008", "email": "grader@vetting.local", "role": "grader", "full_name": "Automated Grader Worker", "inst_id": null}
   ]'::jsonb;
   v_u jsonb;
   v_uid uuid;
@@ -564,3 +575,109 @@ begin
   end loop;
 end;
 $$;
+
+-- =============================================================================
+-- 6. Milestone 4 (M4): Stage 3 AI Track Practical Project Rubrics & Sample Scenario
+-- =============================================================================
+
+-- 6.1 Stage 3 Rubric
+insert into public.rubrics (id, stage, track, part, title, description, active)
+values (
+  '55555555-5555-5555-0003-000000000001',
+  3,
+  'ai',
+  's3_project',
+  'AI Track Stage 3 Practical Project Rubric',
+  'Reviewer scoring criteria for Stage 3 Practical Project (A2, A3, B2, C, D)',
+  true
+)
+on conflict (stage, track, part) do update
+set title = excluded.title,
+    description = excluded.description,
+    active = excluded.active;
+
+-- 6.2 Rubric Criteria (A2: 15 pts, A3: 10 pts, B2: 15 pts, C: 10 pts, D: 10 pts = 60 reviewer pts)
+insert into public.rubric_criteria (id, rubric_id, slug, criterion, weight, scale_min, scale_max, anchors, sort_order)
+values
+  (
+    '55555555-5555-5555-0003-000000000002',
+    '55555555-5555-5555-0003-000000000001',
+    'A2_methodology',
+    'A2: Methodology, Validation & Leakage Prevention',
+    15.0, 1, 4,
+    '{"1": "Critical methodological flaws: visible target leakage, broken CV splits, or unaddressed label overlap.", "2": "Basic pipeline works but uses weak validation, arbitrary hyperparameters, or subtle temporal leakage.", "3": "Clean validation scheme, sensible preprocessing, properly handles class imbalance without leakage.", "4": "Rigorous cross-validation strategy, explicit leakage guards, justified modeling choices and solid feature engineering."}'::jsonb,
+    1
+  ),
+  (
+    '55555555-5555-5555-0003-000000000003',
+    '55555555-5555-5555-0003-000000000001',
+    'A3_data_cleaning',
+    'A3: Data Cleaning & Preprocessing Rationale',
+    10.0, 1, 4,
+    '{"1": "No EDA or preprocessing documentation; drops columns arbitrarily or ignores corrupt records.", "2": "Basic data cleaning performed without explaining rationale or checking distribution shifts.", "3": "Systematic missing value and outlier treatment, documented imputation strategy, data checks present.", "4": "Deep exploratory analysis, justified domain transformations, thorough edge case handling and data health checks."}'::jsonb,
+    2
+  ),
+  (
+    '55555555-5555-5555-0003-000000000004',
+    '55555555-5555-5555-0003-000000000001',
+    'B2_answer_quality',
+    'B2: RAG Answer Quality, Groundedness & Source Citations',
+    15.0, 1, 4,
+    '{"1": "Answers fabricate facts, contradict retrieved context, or fail to cite source documents entirely.", "2": "Answers partially cite context but include minor ungrounded claims or vague references.", "3": "Faithful to retrieved knowledge base, accurate direct answers with explicit, correct document citations.", "4": "Crisp, concise, fully grounded answers with exact section citations; transparently declines when source lacks evidence."}'::jsonb,
+    3
+  ),
+  (
+    '55555555-5555-5555-0003-000000000005',
+    '55555555-5555-5555-0003-000000000001',
+    'C_code_reproducibility',
+    'C: Code Quality, Modularity & Reproducibility',
+    10.0, 1, 4,
+    '{"1": "Spaghetti code, hardcoded local paths, missing dependency files, or fails to execute.", "2": "Executes with manual tweaks; poorly structured or monolithic notebook without functions.", "3": "Clear virtual environment specs (requirements.txt), modular functions, reproducible seed setting.", "4": "Production-grade modular codebase with CLI/config flags, robust error handling, typing, and clear README."}'::jsonb,
+    4
+  ),
+  (
+    '55555555-5555-5555-0003-000000000006',
+    '55555555-5555-5555-0003-000000000001',
+    'D_writeup',
+    'D: Technical Write-up & Analytical Maturity',
+    10.0, 1, 4,
+    '{"1": "Missing write-up or vague buzzwords without empirical backing; exaggerates metrics.", "2": "Superficial report describing actions without analyzing trade-offs, error patterns, or limitations.", "3": "Clear explanation of results, insightful error analysis, realistic operational trade-offs discussed.", "4": "Exemplary engineering communication: honest about failure modes, concrete latency/cost trade-offs, pragmatic production roadmap."}'::jsonb,
+    5
+  )
+on conflict (id) do update
+set criterion = excluded.criterion,
+    weight = excluded.weight,
+    anchors = excluded.anchors,
+    sort_order = excluded.sort_order;
+
+-- 6.3 Fake Sample Scenario for AI Track Stage 3 (Clearly marked for testing)
+insert into public.scenarios (
+  id,
+  track,
+  version,
+  title,
+  description,
+  kit_path,
+  hidden_paths,
+  config,
+  active
+)
+values (
+  '66666666-6666-6666-0003-000000000001',
+  'ai',
+  'v1.0',
+  '[FAKE SAMPLE - NOT REAL CONTENT] Customer Support AI Operations (Ticketing & RAG)',
+  'Build a multi-class priority classifier on customer support tickets and a RAG pipeline over internal knowledge base articles.',
+  'ai-stage3-starter-kit.zip',
+  '{"hidden_test_path": "ai-stage3-hidden-ground-truth.json", "practice_data_path": "ai-stage3-practice-ground-truth.json"}'::jsonb,
+  '{"time_limit_hours": 5, "max_pause_minutes": 30}'::jsonb,
+  true
+)
+on conflict (track, version) do update
+set title = excluded.title,
+    description = excluded.description,
+    kit_path = excluded.kit_path,
+    hidden_paths = excluded.hidden_paths,
+    config = excluded.config,
+    active = excluded.active;
+

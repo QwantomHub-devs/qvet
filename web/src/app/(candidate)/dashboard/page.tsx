@@ -68,8 +68,9 @@ export default async function CandidateDashboardPage() {
   let currentIdDoc: IdDocument | null = null;
   let stage1Result: StageResult | null = null;
   let stage2Result: StageResult | null = null;
+  let stage3Result: StageResult | null = null;
   if (application) {
-    const [{ data: idDocData }, { data: s1Data }, { data: s2Data }] = await Promise.all([
+    const [{ data: idDocData }, { data: s1Data }, { data: s2Data }, { data: s3Data }] = await Promise.all([
       supabase
         .from("id_documents")
         .select("*")
@@ -88,10 +89,17 @@ export default async function CandidateDashboardPage() {
         .eq("application_id", application.id)
         .eq("stage", 2)
         .maybeSingle(),
+      supabase
+        .from("stage_results")
+        .select("*")
+        .eq("application_id", application.id)
+        .eq("stage", 3)
+        .maybeSingle(),
     ]);
     currentIdDoc = (idDocData as IdDocument | null) ?? null;
     stage1Result = (s1Data as StageResult | null) ?? null;
     stage2Result = (s2Data as StageResult | null) ?? null;
+    stage3Result = (s3Data as StageResult | null) ?? null;
   }
 
   const statusMeta = application ? STATUS_DESCRIPTIONS[application.status] : null;
@@ -282,6 +290,52 @@ export default async function CandidateDashboardPage() {
                     ))}
                   </div>
                 )}
+              </section>
+            )}
+
+            {(application.status === "s2_passed" ||
+              application.status === "s3_open" ||
+              application.status.startsWith("s3_")) && (
+              <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-xs space-y-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Stage 3: Practical Project (5 Hours · ML & RAG Challenge)
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Build a multi-class priority classifier on customer support tickets and a RAG pipeline over internal knowledge base articles. Includes starter dataset, up to 10 practice grading runs, and one optional 30-minute pause.
+                  </p>
+                </div>
+                <Link
+                  href="/project"
+                  className="inline-block rounded bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 shadow-sm"
+                >
+                  Enter Practical Project Workspace →
+                </Link>
+              </section>
+            )}
+
+            {stage3Result && (
+              <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-xs space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">
+                      Stage 3 Practical Project Result: {stage3Result.raw_score} / 100 Points
+                    </h2>
+                    <p className="text-xs text-slate-600">
+                      Part A (ML): {stage3Result.details?.part_a_points ?? "—"}/40 · Part B (RAG):{" "}
+                      {stage3Result.details?.part_b_points ?? "—"}/40 · Minimum: 60 pts (with ≥16 on Part A & B)
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded border px-2.5 py-1 text-xs font-semibold ${
+                      stage3Result.passed
+                        ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                        : "border-red-300 bg-red-100 text-red-900"
+                    }`}
+                  >
+                    {stage3Result.passed ? "Passed" : "Did Not Pass"}
+                  </span>
+                </div>
               </section>
             )}
           </>

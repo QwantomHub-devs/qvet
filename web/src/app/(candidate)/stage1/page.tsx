@@ -141,3 +141,4 @@ export default async function CandidateStage1Page() {
     </div>
   );
 }
+

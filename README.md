@@ -106,6 +106,7 @@ All seeded accounts use the password `Password123!`:
 | Reviewer 4  | `reviewer4@vetting.local`  | Attached to AltSchool Africa (`blind` to candidate identities)            |
 | Candidate 1 | `candidate1@vetting.local` | Sample candidate (`Chinedu Okafor`, UNILAG)                               |
 | Candidate 2 | `candidate2@vetting.local` | Sample candidate (`Amina Yusuf`, ABU)                                     |
+| Grader      | `grader@vetting.local`     | Dedicated service worker account for claiming and grading worker jobs     |
 
 ---
 
@@ -155,6 +156,48 @@ npm test
 
 ---
 
-## Grader Worker (`grader/`)
+## Stage 3 Practical Project & Grader Worker Engine (M4)
 
-The Python 3 Docker grader worker (`predictions` and `retrieval` graders) is scheduled for **Milestone 4 (M4)**, and the Judge0 CE sandbox is scheduled for **Milestone 7 (M7 - IoT Track)** per Section 10 of [`docs/platform-design.md`](./docs/platform-design.md).
+- **Scenario Delivery & Server-Side 5-Hour Timer:** `start_project(application_id)` provisions a scenario kit (`scenario-kits` private bucket) and initializes a server-enforced 5-hour countdown (`deadline_at = now() + interval '5 hours'`). Candidates download starter kits using short-lived signed URLs without any hidden evaluation test data.
+- **Single Logged Pause:** Candidates can pause their attempt once (`pause_project`) for up to 30 minutes to accommodate power outages or connectivity breaks. A resume call (`resume_project`) extends the deadline by the exact paused duration and writes an audit log entry. Subsequent pause attempts are strictly rejected.
+- **Deliverables & Size Limits:** Submissions per part (`predictions`, `retrieval`, `notebook`, `code`, `writeup`) are validated against server-enforced byte caps (`max_project_upload_bytes`) stored in `settings`:
+  - `predictions`: 2 MB
+  - `retrieval`: 5 MB
+  - `notebook`: 10 MB
+  - `code`: 5 MB
+  - `writeup`: 5 MB
+- **Practice Runs Queue (Max 10):** Candidates can trigger intermediate practice runs (`request_practice_run`) during the project window. Practice runs compute metrics on practice data to give immediate feedback without awarding final score points. A strict 10-run limit per attempt is enforced by Postgres triggers.
+- **Grader Worker Engine (`grader/`):** A standalone, outbound-only Python 3 worker operating with zero external pip dependencies (standard library only).
+  - Atomically claims queued jobs via `claim_next_job` using `FOR UPDATE SKIP LOCKED`.
+  - Re-queues stalled jobs after 10 minutes (`requeue_stuck_jobs`).
+  - Evaluates **Part A1 Predictions** using multi-class Macro-F1 with piecewise/linear point mapping (0–15 points).
+  - Evaluates **Part B1 Retrieval** using Top-3 Hit Rate on knowledge base documents (0–15 points).
+  - Evaluates **Part B3 Unanswerable Queries** measuring correct refusal detection (0–10 points).
+  - Saves scores directly to `project_component_scores` via `save_job_result`.
+- **Pass Thresholds:** Stage 3 requires a total of $\ge 60$ points out of 100, plus minimums of $\ge 16$ points out of 40 in Part A and $\ge 16$ points out of 40 in Part B.
+
+### Running the Grader Worker
+
+```bash
+# In development/test mode:
+python3 -m grader.worker
+
+# To run with custom Supabase endpoints:
+SUPABASE_URL="http://127.0.0.1:54321" \
+GRADER_SERVICE_KEY="<service_role_or_grader_jwt>" \
+python3 -m grader.worker
+```
+
+### Running Grader Unit Tests
+
+```bash
+python3 -m unittest discover -s grader/tests
+```
+
+### Generating Synthetic Fake Scenarios
+
+To generate sample ticket and retrieval data for local testing (clearly marked `[FAKE SAMPLE - NOT REAL CONTENT]`):
+
+```bash
+python3 scripts/generate_fake_scenario.py
+```

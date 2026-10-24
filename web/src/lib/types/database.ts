@@ -1,4 +1,4 @@
-export type UserRole = "candidate" | "reviewer" | "admin";
+export type UserRole = "candidate" | "reviewer" | "admin" | "grader";
 
 export type Track = "ai" | "iot" | "robotics";
 
@@ -230,6 +230,10 @@ export interface StageResult {
     part_b_rubric_avg?: number;
     part_b_percent?: number;
     part_c_percent?: number;
+    total_points?: number;
+    part_a_points?: number;
+    part_b_points?: number;
+    component_scores?: Record<string, number>;
   };
   created_at: string;
   updated_at: string;
@@ -474,4 +478,92 @@ export const STATUS_DESCRIPTIONS: Record<
     badgeClass: "bg-amber-100 text-amber-900 border-amber-300",
   },
 };
+
+// =============================================================================
+// Milestone 4: Stage 3 Practical Project Types
+// =============================================================================
+
+export interface Scenario {
+  id: string;
+  track: Track;
+  stage: number;
+  title: string;
+  description: string;
+  starter_kit_path: string;
+  hidden_test_path: string;
+  practice_data_path: string | null;
+  time_limit_hours: number;
+  max_pause_minutes: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ProjectAttemptStatus = "in_progress" | "paused" | "submitted" | "expired";
+
+export interface ProjectAttempt {
+  id: string;
+  application_id: string;
+  scenario_id: string;
+  status: ProjectAttemptStatus;
+  started_at: string;
+  deadline_at: string;
+  paused_at: string | null;
+  pause_count: number;
+  total_paused_seconds: number;
+  max_pause_seconds: number;
+  runs_used: number;
+  runs_allowed: number;
+  submitted_at: string | null;
+  score: number | null;
+  ai_disclosure: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type SubmissionPart = "predictions" | "retrieval" | "notebook" | "code" | "writeup";
+
+export interface Submission {
+  id: string;
+  attempt_id: string;
+  part: SubmissionPart;
+  file_path: string;
+  file_name: string;
+  file_size_bytes: number;
+  mime_type: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type GradingJobStatus = "queued" | "running" | "done" | "failed";
+export type GradingJobMode = "practice" | "final";
+
+export interface GradingJob {
+  id: string;
+  submission_id: string;
+  mode: GradingJobMode;
+  part: SubmissionPart;
+  status: GradingJobStatus;
+  queued_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  claimed_by: string | null;
+  result: Record<string, any>;
+  candidate_feedback: string | null;
+  error: string | null;
+}
+
+export interface ProjectComponentScore {
+  id: string;
+  attempt_id: string;
+  component: string;
+  points: number;
+  max_points: number;
+  source: "auto" | "reviewer";
+  details: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
 
