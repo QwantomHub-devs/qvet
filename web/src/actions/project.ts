@@ -191,14 +191,23 @@ export async function uploadSubmissionFileAction(
     return { ok: false, error: `Upload failed: ${uploadError.message}` };
   }
 
+  const partMap: Record<SubmissionPart, { part: string; kind: string }> = {
+    predictions: { part: "A", kind: "predictions" },
+    retrieval: { part: "B", kind: "retrieval" },
+    notebook: { part: "C", kind: "notebook" },
+    code: { part: "C", kind: "code" },
+    writeup: { part: "writeup", kind: "writeup" },
+  };
+  const mapping = partMap[part] ?? { part: "A", kind: "predictions" };
+  const aiDisclosure = String(formData.get("aiDisclosure") ?? "").trim() || null;
+
   // Record submission in database
   const { data, error: recordError } = await supabase.rpc("record_submission", {
     p_attempt_id: attemptId,
-    p_part: part,
+    p_part: mapping.part,
+    p_kind: mapping.kind,
     p_file_path: storagePath,
-    p_file_name: file.name,
-    p_file_size_bytes: file.size,
-    p_mime_type: file.type || "application/octet-stream",
+    p_ai_disclosure: aiDisclosure,
   });
 
   if (recordError || !data) {

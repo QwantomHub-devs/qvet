@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { isValidImageOrPdfBytes } from "@/lib/validation/magic-bytes";
 import type { Track, TrackMetadata } from "@/lib/types/database";
 import {
   checkUrlReachable,
@@ -179,6 +180,14 @@ export async function uploadIdDocumentAction(formData: FormData): Promise<Action
   const storagePath = `${user.id}/${applicationId}/${Date.now()}-${safeFileName}`;
 
   const arrayBuffer = await file.arrayBuffer();
+  const headerBytes = new Uint8Array(arrayBuffer.slice(0, 16));
+  if (!isValidImageOrPdfBytes(headerBytes)) {
+    return {
+      ok: false,
+      error: "Corrupted or invalid file contents. Please upload a genuine JPEG, PNG, WebP, or PDF file.",
+    };
+  }
+
   const { error: uploadError } = await supabase.storage
     .from("id-documents")
     .upload(storagePath, arrayBuffer, {

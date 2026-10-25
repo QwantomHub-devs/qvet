@@ -7,6 +7,7 @@ import {
   REFRESH_TOKEN_COOKIE,
   createServerSupabaseClient,
 } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export interface ActionResult {
   ok: boolean;
@@ -27,6 +28,15 @@ export async function signUpAction(formData: FormData): Promise<ActionResult> {
   }
   if (password.length < 8) {
     return { ok: false, error: "Password must be at least 8 characters long." };
+  }
+
+  const rateCheck = checkRateLimit(`signup:${email}`, 5, 60_000);
+  if (!rateCheck.allowed) {
+    const seconds = Math.ceil(rateCheck.resetMs / 1000);
+    return {
+      ok: false,
+      error: `Too many registration attempts. Please wait ${seconds} seconds before trying again.`,
+    };
   }
 
   const supabase = await createServerSupabaseClient();
@@ -67,6 +77,15 @@ export async function signInAction(formData: FormData): Promise<ActionResult> {
 
   if (!email || !password) {
     return { ok: false, error: "Please enter both your email and password." };
+  }
+
+  const rateCheck = checkRateLimit(`login:${email}`, 5, 60_000);
+  if (!rateCheck.allowed) {
+    const seconds = Math.ceil(rateCheck.resetMs / 1000);
+    return {
+      ok: false,
+      error: `Too many sign-in attempts. Please wait ${seconds} seconds before trying again.`,
+    };
   }
 
   const supabase = await createServerSupabaseClient();

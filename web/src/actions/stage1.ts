@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { isValidVideoBytes } from "@/lib/validation/magic-bytes";
 import type { Stage1Prompt, Stage1Response, ServedQuestion } from "@/lib/types/database";
 
 const ALLOWED_VIDEO_MIMES = new Set([
@@ -180,11 +181,20 @@ export async function submitStage1VideoAction(formData: FormData): Promise<{
         ? "mov"
         : "webm";
 
+  const arrayBuffer = await file.arrayBuffer();
+  const headerBytes = new Uint8Array(arrayBuffer.slice(0, 16));
+  if (!isValidVideoBytes(headerBytes)) {
+    return {
+      ok: false,
+      error: "Corrupted or invalid video file contents. Please upload a genuine WebM, MP4, or QuickTime video.",
+    };
+  }
+
   const storagePath = `${user.id}/${applicationId}/stage1-video-${Date.now()}.${ext}`;
 
   const { error: uploadErr } = await supabase.storage
     .from("stage1-videos")
-    .upload(storagePath, file, {
+    .upload(storagePath, arrayBuffer, {
       contentType: normalizedMime,
       upsert: true,
     });

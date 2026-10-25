@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 import type {
   Credential,
   OverallResult,
@@ -73,6 +74,11 @@ export async function adminRevokeCredentialAction(
 export async function getPublicCredentialVerificationAction(
   verifyCode: string
 ): Promise<PublicCredentialVerification> {
+  const rateCheck = checkRateLimit("public-verify", 60, 60_000);
+  if (!rateCheck.allowed) {
+    return { found: false, error: "Too many verification requests. Please try again shortly." };
+  }
+
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.rpc(
     "get_public_credential_verification",

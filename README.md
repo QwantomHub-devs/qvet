@@ -225,3 +225,18 @@ python3 scripts/generate_fake_scenario.py
 - **Admin Approval & Credential Issuance:** Admins approve credentials in `/admin`, generating a cryptographically random, unguessable `verify_code` (e.g. `VET-K8J2-M9N4`) valid for 24 months, and advancing status to `certified`.
 - **Public Verification (`/verify/[code]`):** Publicly accessible endpoint that strictly returns *only* candidate full name, track, tier, issued/expiry dates, and validity status (`valid`, `revoked`, `expired`). **Zero PII leakage** (no candidate email, phone, institution, or raw question answers).
 - **Employer Scorecard (`/scorecard/[code]`):** Comprehensive scorecard displaying tier, overall score, Stage 2 technical exam domain breakdown, Stage 3 practical project metrics, communication rating, and senior reviewer appraisal.
+
+---
+
+## Security Audit & Hardening (Milestones 1–5 Review)
+
+A comprehensive security audit and penetration review was conducted across 8 security vectors, resulting in automated attack tests (`web/tests/security-audit.test.ts`) and hardening migration `0006_security_hardening.sql`:
+
+- **Confidentiality & Access Control (RLS):**
+  - All 27 tables have Row Level Security enabled and forced (`FORCE ROW LEVEL SECURITY`).
+  - Answer keys (`question_keys`), hidden evaluation datasets (`scenario-hidden`), and internal grader queues (`grading_jobs`) are strictly isolated from candidates.
+  - Reviewer access to project submissions and storage is strictly scoped to explicitly assigned reviews or Stage 4 defence bookings (Rule 10 blind review separation).
+- **Integrity Event Quota Protection:** `public.log_integrity_event` enforces a quota limit of 100 events per exam attempt to prevent database storage exhaustion on Supabase free-tier limits.
+- **Application-Level Rate Limiting:** In-memory sliding-window rate limiters protect registration (`signUpAction`), login (`signInAction`), and public credential verification (`/verify/[code]`).
+- **Binary Magic-Byte Inspection:** Upload endpoints validate binary headers (JPEG, PNG, WebP, PDF, WebM, MP4) rather than relying solely on client-provided MIME strings.
+- **Penetration Test Suite:** Automated attack simulations cover 22 attack scenarios (`npm --prefix web test`), verifying RLS enforcement, status/score immutability, and blind reviewer isolation.
