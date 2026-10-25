@@ -201,3 +201,27 @@ To generate sample ticket and retrieval data for local testing (clearly marked `
 ```bash
 python3 scripts/generate_fake_scenario.py
 ```
+
+---
+
+## Results, Credentials & Stage 4 Live Defence (M5)
+
+- **Stage 4 Booking & Video Call (`/defence`):** Candidates who pass Stage 3 schedule a 40-minute live technical defence (`book_stage4_defence`) with a stored external video call link (Google Meet / Jitsi).
+- **Reviewer Conflict Prevention (Rule 10):** Reviewers are automatically screened; a reviewer cannot be assigned a candidate from their own institution.
+- **Five-Criterion Rubric Scoring (`/reviewer`):** Reviewers evaluate the interview across five dimensions (scored 1 to 4):
+  1. `understanding_own_work`: Rationale behind architecture and code. A score of 1 is an automatic fail signal for borrowed or unexplained code.
+  2. `fundamentals_depth`: Mastery of core machine learning and engineering concepts.
+  3. `live_problem_solving`: Adapting to a live prompt modification and reasoning aloud.
+  4. `communication`: Clarity, conciseness, and active listening.
+  5. `honesty_professionalism`: Candor about limitations and verification steps.
+- **Stage 4 Passing Requirements:** Average score $\ge 2.50 / 4.00$ and `understanding_own_work > 1`. Percentage conversion: `((avg - 1) / 3) * 100`.
+- **`compute_overall(application_id)`:** Evaluates overall weighted score:
+  $$\text{overall} = 0.15 \times \text{Stage 1} + 0.25 \times \text{Stage 2} + 0.35 \times \text{Stage 3} + 0.25 \times \text{Stage 4}$$
+  - Enforces all stage minimums ($\ge 60\%$ in Stages 1–3, $\ge 2.50$ avg in Stage 4). If any stage minimum is not met, certification is denied.
+  - Tiers:
+    - **Elite:** Overall $\ge 90$ and Stage 4 average $\ge 3.50$.
+    - **Certified Pro:** Overall $\ge 80$ and Stage 3 score $\ge 75$.
+    - **Certified:** Overall $\ge 70$ with all stage minimums met.
+- **Admin Approval & Credential Issuance:** Admins approve credentials in `/admin`, generating a cryptographically random, unguessable `verify_code` (e.g. `VET-K8J2-M9N4`) valid for 24 months, and advancing status to `certified`.
+- **Public Verification (`/verify/[code]`):** Publicly accessible endpoint that strictly returns *only* candidate full name, track, tier, issued/expiry dates, and validity status (`valid`, `revoked`, `expired`). **Zero PII leakage** (no candidate email, phone, institution, or raw question answers).
+- **Employer Scorecard (`/scorecard/[code]`):** Comprehensive scorecard displaying tier, overall score, Stage 2 technical exam domain breakdown, Stage 3 practical project metrics, communication rating, and senior reviewer appraisal.

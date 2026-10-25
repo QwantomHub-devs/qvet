@@ -12,6 +12,10 @@ import {
   verifyIdDocumentAction,
 } from "@/actions/admin";
 import {
+  adminIssueCredentialAction,
+  adminRevokeCredentialAction,
+} from "@/actions/credentials";
+import {
   DOMAIN_LABELS,
   STATUS_DESCRIPTIONS,
   TRACK_LABELS,
@@ -109,6 +113,38 @@ export function AdminConsoleClient({
         return;
       }
       setFeedback({ type: "ok", text: res.message ?? "Stage 2 unlocked." });
+    });
+  }
+
+  function handleIssueCredential(applicationId: string) {
+    setFeedback(null);
+    startTransition(async () => {
+      const res = await adminIssueCredentialAction(applicationId);
+      if (!res.ok) {
+        setFeedback({ type: "err", text: res.error ?? "Could not issue credential." });
+        return;
+      }
+      setFeedback({
+        type: "ok",
+        text: `Credential issued successfully! Verify code: ${res.credential?.verify_code}`,
+      });
+    });
+  }
+
+  function handleRevokeCredential(credentialId: string) {
+    const reason = window.prompt("Please enter the reason for credential revocation:");
+    if (!reason || reason.trim().length < 5) {
+      alert("A valid revocation reason (at least 5 characters) is required.");
+      return;
+    }
+    setFeedback(null);
+    startTransition(async () => {
+      const res = await adminRevokeCredentialAction(credentialId, reason.trim());
+      if (!res.ok) {
+        setFeedback({ type: "err", text: res.error ?? "Could not revoke credential." });
+        return;
+      }
+      setFeedback({ type: "ok", text: "Credential successfully revoked." });
     });
   }
 
@@ -415,6 +451,43 @@ export function AdminConsoleClient({
                       <p className="mt-3 text-xs text-slate-500">
                         Candidate has not uploaded a government ID document yet.
                       </p>
+                    )}
+                    {application.status === "s4_passed" && (
+                      <div className="mt-4 rounded-lg border border-emerald-300 bg-emerald-50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wider text-emerald-900">
+                              Stage 4 Defence Passed · Eligible for Credential
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-700">
+                              All 4 stages completed. Ready to calculate final overall score and issue verifiable credential.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => handleIssueCredential(application.id)}
+                            className="rounded-md bg-emerald-700 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-800 disabled:opacity-50"
+                          >
+                            {isPending ? "Issuing..." : "Approve & Issue Credential"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {application.status === "certified" && (
+                      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                              Certification Status: Certified
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-600">
+                              Overall Score: {application.score ?? "—"}/100
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
                 );

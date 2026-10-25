@@ -205,7 +205,11 @@ export function ReviewerConsoleClient({ initialItems }: ReviewerConsoleClientPro
                   >
                     {item.part === "s1_text"
                       ? "Stage 1 Part A · Written Explanation"
-                      : "Stage 1 Part B · Video Scenario"}
+                      : item.part === "s1_video"
+                      ? "Stage 1 Part B · Video Scenario"
+                      : item.part === "s4_defence"
+                      ? "Stage 4 · Live Technical Defence"
+                      : "Stage 3 · Practical Project Review"}
                   </p>
                   <div
                     className={`mt-1.5 flex items-center justify-between text-[11px] ${
@@ -268,48 +272,105 @@ export function ReviewerConsoleClient({ initialItems }: ReviewerConsoleClientPro
                   </p>
                 </div>
 
-                {/* Candidate Work (Text or Video) */}
+                {/* Candidate Work (Text, Video, or Live Defence) */}
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    <span>
-                      Candidate Work (
-                      {selectedItem.response_kind === "text"
-                        ? `Written Explanation · ${selectedItem.word_count} words`
-                        : `Recorded Video · ${selectedItem.duration_seconds ?? 120}s`}
-                      )
-                    </span>
-                    {selectedItem.response_submitted_at && (
-                      <span>
-                        Submitted {new Date(selectedItem.response_submitted_at).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
+                  {selectedItem.part === "s4_defence" ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-slate-600">
+                        <span>Live Technical Defence Interview</span>
+                        {selectedItem.scheduled_at && (
+                          <span className="text-slate-800 font-bold">
+                            Scheduled: {new Date(selectedItem.scheduled_at).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
 
-                  {selectedItem.response_kind === "text" ? (
-                    <div className="mt-3 whitespace-pre-wrap rounded border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-900">
-                      {selectedItem.response_text || "(Empty response)"}
+                      <div className="rounded-md border border-indigo-200 bg-indigo-50/70 p-4 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-indigo-900">
+                              Meeting Video Link
+                            </p>
+                            <p className="text-sm font-mono text-indigo-950 truncate max-w-md">
+                              {selectedItem.meeting_url || "Link will be provided before interview"}
+                            </p>
+                          </div>
+                          {selectedItem.meeting_url && (
+                            <a
+                              href={selectedItem.meeting_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-700"
+                            >
+                              Open Video Call →
+                            </a>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                        <div className="rounded border border-slate-200 bg-white p-2">
+                          <span className="block font-bold text-slate-900">10 min</span>
+                          <span className="text-[11px] text-slate-500">Walkthrough</span>
+                        </div>
+                        <div className="rounded border border-slate-200 bg-white p-2">
+                          <span className="block font-bold text-slate-900">10 min</span>
+                          <span className="text-[11px] text-slate-500">Probing</span>
+                        </div>
+                        <div className="rounded border border-slate-200 bg-white p-2">
+                          <span className="block font-bold text-slate-900">15 min</span>
+                          <span className="text-[11px] text-slate-500">Live Change</span>
+                        </div>
+                        <div className="rounded border border-slate-200 bg-white p-2">
+                          <span className="block font-bold text-slate-900">5 min</span>
+                          <span className="text-[11px] text-slate-500">Close</span>
+                        </div>
+                      </div>
                     </div>
                   ) : (
-                    <div className="mt-3 space-y-3">
-                      {videoUrls[selectedItem.assignment_id] ? (
-                        <video
-                          src={videoUrls[selectedItem.assignment_id]}
-                          controls
-                          className="aspect-video w-full max-w-xl rounded border border-slate-300 bg-black"
-                        />
+                    <>
+                      <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-slate-600">
+                        <span>
+                          Candidate Work (
+                          {selectedItem.response_kind === "text"
+                            ? `Written Explanation · ${selectedItem.word_count} words`
+                            : `Recorded Video · ${selectedItem.duration_seconds ?? 120}s`}
+                          )
+                        </span>
+                        {selectedItem.response_submitted_at && (
+                          <span>
+                            Submitted {new Date(selectedItem.response_submitted_at).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+
+                      {selectedItem.response_kind === "text" ? (
+                        <div className="mt-3 whitespace-pre-wrap rounded border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-900">
+                          {selectedItem.response_text || "(Empty response)"}
+                        </div>
                       ) : (
-                        <button
-                          type="button"
-                          disabled={isPending}
-                          onClick={() => handleLoadVideo(selectedItem.assignment_id)}
-                          className="rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-                        >
-                          {isPending
-                            ? "Generating Signed Playback Link..."
-                            : "Load 5-Minute Signed Video Playback"}
-                        </button>
+                        <div className="mt-3 space-y-3">
+                          {videoUrls[selectedItem.assignment_id] ? (
+                            <video
+                              src={videoUrls[selectedItem.assignment_id]}
+                              controls
+                              className="aspect-video w-full max-w-xl rounded border border-slate-300 bg-black"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              onClick={() => handleLoadVideo(selectedItem.assignment_id)}
+                              className="rounded-md bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                            >
+                              {isPending
+                                ? "Generating Signed Playback Link..."
+                                : "Load 5-Minute Signed Video Playback"}
+                            </button>
+                          )}
+                        </div>
                       )}
-                    </div>
+                    </>
                   )}
                 </div>
 

@@ -206,3 +206,4 @@ def score_retrieval(
         "b1_details": b1_details,
         "b3_details": b3_details,
     }
+

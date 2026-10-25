@@ -322,13 +322,16 @@ export interface ReviewerQueueItem {
   anonymous_candidate_ref: string;
   track: Track;
   response_id: string;
-  response_kind: "text" | "video";
+  response_kind: "text" | "video" | "defence";
   response_text: string | null;
   word_count: number;
   storage_path: string | null;
   mime_type: string | null;
   duration_seconds: number | null;
   response_submitted_at: string | null;
+  booking_id?: string | null;
+  meeting_url?: string | null;
+  scheduled_at?: string | null;
   prompt_title: string;
   prompt_text: string;
   rubric: Rubric | null;
@@ -565,5 +568,103 @@ export interface ProjectComponentScore {
   created_at: string;
   updated_at: string;
 }
+
+export type Stage4BookingStatus = "scheduled" | "completed" | "cancelled";
+
+export interface Stage4Booking {
+  id: string;
+  application_id: string;
+  reviewer_id: string;
+  scheduled_at: string;
+  meeting_url: string;
+  status: Stage4BookingStatus;
+  notes: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type CredentialTier = "certified" | "certified_pro" | "elite";
+
+export interface Credential {
+  id: string;
+  application_id: string;
+  tier: CredentialTier;
+  overall: number;
+  issued_at: string;
+  expires_at: string;
+  verify_code: string;
+  revoked: boolean;
+  revoked_at: string | null;
+  revoked_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OverallResult {
+  application_id: string;
+  overall: number;
+  tier: CredentialTier | null;
+  all_minima_met: boolean;
+  stage_results: {
+    stage_1: { percent: number; passed: boolean };
+    stage_2: { percent: number; passed: boolean };
+    stage_3: { percent: number; passed: boolean };
+    stage_4: { percent: number; raw_score: number; passed: boolean };
+  };
+  weights: {
+    stage_1: number;
+    stage_2: number;
+    stage_3: number;
+    stage_4: number;
+  };
+}
+
+export interface PublicCredentialVerification {
+  found: boolean;
+  error?: string;
+  full_name?: string;
+  track?: Track;
+  tier?: CredentialTier;
+  issued_at?: string;
+  expires_at?: string;
+  is_valid?: boolean;
+  status?: "valid" | "revoked" | "expired";
+  verify_code?: string;
+}
+
+export interface EmployerScorecard {
+  found: boolean;
+  error?: string;
+  full_name?: string;
+  track?: Track;
+  tier?: CredentialTier;
+  overall?: number;
+  issued_at?: string;
+  expires_at?: string;
+  status?: "valid" | "revoked" | "expired";
+  is_valid?: boolean;
+  verify_code?: string;
+  stage_percentages?: {
+    stage_1_foundation: number;
+    stage_2_exam: number;
+    stage_3_project: number;
+    stage_4_defence: number;
+  };
+  exam_domain_scores?: Array<{
+    domain: string;
+    correct: number;
+    total: number;
+    percent: number;
+  }>;
+  project_summary?: {
+    total_project_score: number;
+    part_a_points: string;
+    part_b_points: string;
+  };
+  communication_rating?: string;
+  reviewer_comment?: string | null;
+}
+
 
 

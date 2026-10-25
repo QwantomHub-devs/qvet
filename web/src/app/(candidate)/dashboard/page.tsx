@@ -69,8 +69,17 @@ export default async function CandidateDashboardPage() {
   let stage1Result: StageResult | null = null;
   let stage2Result: StageResult | null = null;
   let stage3Result: StageResult | null = null;
+  let stage4Result: StageResult | null = null;
+  let credential: any = null;
   if (application) {
-    const [{ data: idDocData }, { data: s1Data }, { data: s2Data }, { data: s3Data }] = await Promise.all([
+    const [
+      { data: idDocData },
+      { data: s1Data },
+      { data: s2Data },
+      { data: s3Data },
+      { data: s4Data },
+      { data: credData },
+    ] = await Promise.all([
       supabase
         .from("id_documents")
         .select("*")
@@ -95,11 +104,24 @@ export default async function CandidateDashboardPage() {
         .eq("application_id", application.id)
         .eq("stage", 3)
         .maybeSingle(),
+      supabase
+        .from("stage_results")
+        .select("*")
+        .eq("application_id", application.id)
+        .eq("stage", 4)
+        .maybeSingle(),
+      supabase
+        .from("credentials")
+        .select("*")
+        .eq("application_id", application.id)
+        .maybeSingle(),
     ]);
     currentIdDoc = (idDocData as IdDocument | null) ?? null;
     stage1Result = (s1Data as StageResult | null) ?? null;
     stage2Result = (s2Data as StageResult | null) ?? null;
     stage3Result = (s3Data as StageResult | null) ?? null;
+    stage4Result = (s4Data as StageResult | null) ?? null;
+    credential = credData ?? null;
   }
 
   const statusMeta = application ? STATUS_DESCRIPTIONS[application.status] : null;
@@ -335,6 +357,94 @@ export default async function CandidateDashboardPage() {
                   >
                     {stage3Result.passed ? "Passed" : "Did Not Pass"}
                   </span>
+                </div>
+              </section>
+            )}
+
+            {/* Stage 4: Live Technical Defence */}
+            {(application.status === "s3_passed" ||
+              application.status.startsWith("s4_")) && (
+              <section className="rounded-lg border border-indigo-200 bg-white p-6 shadow-xs space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="rounded bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800 uppercase">
+                    Stage 4 · 25% Weight
+                  </span>
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Stage 4: Live Technical Defence (40 Minutes)
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    A one-on-one video call with a senior engineer. You will walk through your Stage 3 code, answer architectural trade-off questions, and implement a live modification.
+                  </p>
+                </div>
+                <Link
+                  href="/defence"
+                  className="inline-block rounded bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 shadow-sm"
+                >
+                  {application.status === "s3_passed"
+                    ? "Book Defence Interview →"
+                    : "View Defence Details & Meeting Link →"}
+                </Link>
+              </section>
+            )}
+
+            {/* Stage 4 Result */}
+            {stage4Result && (
+              <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-xs space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">
+                      Stage 4 Live Defence Result: {stage4Result.raw_score} / 4.00 Avg ({stage4Result.percent}%)
+                    </h2>
+                    <p className="text-xs text-slate-600">
+                      Minimum required: 2.50 / 4.00 and no score of 1 in understanding of own work.
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded border px-2.5 py-1 text-xs font-semibold ${
+                      stage4Result.passed
+                        ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                        : "border-red-300 bg-red-100 text-red-900"
+                    }`}
+                  >
+                    {stage4Result.passed ? "Passed" : "Did Not Pass"}
+                  </span>
+                </div>
+              </section>
+            )}
+
+            {/* Issued Credential Banner */}
+            {credential && (
+              <section className="rounded-xl border border-emerald-300 bg-emerald-50/80 p-6 shadow-xs space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <span className="rounded bg-emerald-700 px-2.5 py-0.5 text-xs font-bold text-white uppercase tracking-wider">
+                      Verified Credential Issued
+                    </span>
+                    <h2 className="mt-2 text-2xl font-extrabold text-emerald-950 capitalize">
+                      {credential.tier?.replace("_", " ")} Engineer · Score: {credential.overall}/100
+                    </h2>
+                    <p className="text-xs text-emerald-900 mt-1">
+                      Verification Code: <span className="font-mono font-bold">{credential.verify_code}</span> · Valid through{" "}
+                      {new Date(credential.expires_at).toLocaleDateString()}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href={`/verify/${credential.verify_code}`}
+                      className="rounded-lg bg-emerald-800 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-900"
+                    >
+                      Public Verification Page →
+                    </Link>
+                    <Link
+                      href={`/scorecard/${credential.verify_code}`}
+                      className="rounded-lg border border-emerald-700 bg-white px-4 py-2 text-xs font-bold text-emerald-900 hover:bg-emerald-50"
+                    >
+                      Employer Scorecard →
+                    </Link>
+                  </div>
                 </div>
               </section>
             )}

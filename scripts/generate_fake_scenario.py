@@ -330,3 +330,4 @@ See `templates/predictions_template.csv` and `templates/retrieval_template.json`
 
 if __name__ == "__main__":
     build_scenario_assets()
+

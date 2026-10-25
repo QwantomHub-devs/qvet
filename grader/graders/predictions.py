@@ -144,3 +144,4 @@ def score_predictions(
         "total_tickets": len(ground_truth),
         "feedback": feedback,
     }
+
