@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { AdminConsoleClient, type AdminApplicationRow } from "@/components/AdminConsoleClient";
 import { Navbar } from "@/components/Navbar";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { PlatformTelemetry } from "@/actions/admin-telemetry";
 import type {
   Application,
   AuditLogEntry,
@@ -43,6 +44,7 @@ export default async function AdminPage() {
     { data: auditLogsData },
     { data: settingsData },
     { data: rubricCriteriaData },
+    { data: telemetryData },
   ] = await Promise.all([
     supabase.from("applications").select("*").order("created_at", { ascending: false }),
     supabase.from("questions").select("*").order("created_at", { ascending: false }),
@@ -56,6 +58,7 @@ export default async function AdminPage() {
     supabase.from("audit_log").select("*").order("at", { ascending: false }).limit(100),
     supabase.from("settings").select("*").order("key", { ascending: true }),
     supabase.from("rubric_criteria").select("*").order("sort_order", { ascending: true }),
+    supabase.rpc("get_platform_telemetry"),
   ]);
 
   const applications = (applicationsData as Application[] | null) ?? [];
@@ -66,6 +69,7 @@ export default async function AdminPage() {
   const auditLogs = (auditLogsData as AuditLogEntry[] | null) ?? [];
   const settings = (settingsData as SettingRow[] | null) ?? [];
   const rubricCriteria = (rubricCriteriaData as RubricCriterion[] | null) ?? [];
+  const telemetry = (telemetryData as PlatformTelemetry | null) ?? null;
 
   const profileByUserId = new Map(profiles.map((p) => [p.user_id, p]));
   const docByAppId = new Map(idDocs.map((d) => [d.application_id, d]));
@@ -107,6 +111,7 @@ export default async function AdminPage() {
           auditLogs={auditLogs}
           settings={settings}
           rubricCriteria={rubricCriteria}
+          initialTelemetry={telemetry}
         />
       </main>
     </div>

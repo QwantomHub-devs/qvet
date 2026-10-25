@@ -116,3 +116,4 @@ export default async function StartPage({ searchParams }: StartPageProps) {
     </main>
   );
 }
+

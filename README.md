@@ -278,3 +278,34 @@ Outbound events are queued atomically within database transactions via triggers 
 - **Dead-Letter Handling (Rule 6.2):** HTTP 4xx client errors (bad request, invalid signature, not found) are marked terminal `dead_letter` immediately with zero retries.
 - **Queue Flushing (`/api/internal/dispatch-webhooks`):** Triggerable by cron or internal background workers to flush pending outbox events.
 - **NDPA Privacy Guarantee:** Webhook payloads contain strictly zero private storage bucket paths, zero NIN/BVN identifiers, and zero raw video links.
+
+---
+
+## Reliability, Dead-Letter Queues (DLQ) & Admin Observability
+
+Comprehensive fault-tolerance mechanisms, queues, and observability features ensure high availability under real-world connectivity and downtime scenarios:
+
+### 1. Outbound Webhook Circuit Breaker
+- **Failure Threshold & Cooldown:** Monitors consecutive outbound delivery failures to the Q-Fellows Portal. After 5 consecutive 5xx server errors or network timeouts within 10 minutes, the breaker transitions to `OPEN` state.
+- **Canary Probe Recovery:** In `OPEN` state, outbound webhook flushing is suspended for a 5-minute cooldown period without hitting downstream servers. Once the cooldown expires, it moves to `HALF_OPEN` and sends a single canary probe. If successful, it automatically restores normal `CLOSED` operations.
+- **Admin Control:** Administrators can inspect the circuit state on `/admin` and trigger a manual reset or immediate outbox flush anytime.
+
+### 2. Dead-Letter Queues (DLQ) & Stalled Job Recovery
+- **Grader Worker DLQ:** `public.grading_jobs` tracks attempt counters (`attempts`). If a job fails or stalls more than 3 times, `requeue_stuck_jobs` transitions the job to `dead_letter` status with a failure summary, preventing poison-pill submissions from blocking queue workers.
+- **Admin Re-Drive Actions:** The Administrator Console provides one-click batch re-drive buttons for both dead-lettered webhooks (`admin_redrive_webhooks`) and failed grading jobs (`admin_redrive_grading_jobs`).
+
+### 3. Client Mutation Idempotency
+- **Practice Runs:** `request_practice_run` accepts a `client_request_id` parameter. Network retries with the same request ID return the already-queued job without deducting from the candidate's 10-run quota.
+- **Exam Answer Submissions:** `submit_answer` idempotently handles duplicate network retries for locked answers, returning `{ idempotent: true, success: true }` rather than throwing errors on flaky connections.
+
+### 4. Admin Metrics & Observability Dashboard (`/admin`)
+The **"Metrics & Telemetry"** console tab surfaces real-time system health:
+- **Assessment Funnel Progression:** Stage-by-stage drop-off analytics (Registered $\rightarrow$ ID Verified $\rightarrow$ S1 $\rightarrow$ S2 $\rightarrow$ S3 $\rightarrow$ S4 $\rightarrow$ Certified).
+- **Track & Tier Distributions:** Candidate distributions across AI, IoT, and Robotics, and certified tiers (Elite, Certified Pro, Certified).
+- **Stage Performance Telemetry:** Average scores across Stage 1, Stage 2, Stage 3 (Part A/B), and Stage 4 Live Defence.
+- **Queue Depths & DLQ Logs:** Live table of outbound webhooks and problem grading jobs with interactive Re-Drive controls.
+
+### 5. Housekeeping & Free-Tier Automation (Rule 8)
+- **`scripts/cleanup_expired_storage.py`:** Automates deletion of Stage 1 videos (> 60 days) and verified ID images to stay within free-tier storage caps.
+- **`scripts/keep_alive.py`:** Scheduled health probe pinging Supabase PostgREST to prevent idle project pausing.
+- **`scripts/export_database.py`:** Automated JSON/SQL disaster recovery backup script dumping critical tables to `backups/`.

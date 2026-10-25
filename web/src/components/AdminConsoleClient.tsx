@@ -16,6 +16,17 @@ import {
   adminRevokeCredentialAction,
 } from "@/actions/credentials";
 import {
+  flushWebhooksAction,
+  redriveWebhooksAction,
+  redriveGradingJobsAction,
+  resetCircuitBreakerAction,
+  fetchRecentWebhooksAction,
+  fetchProblemGradingJobsAction,
+  type PlatformTelemetry,
+  type OutboundWebhookLogItem,
+  type GradingJobLogItem,
+} from "@/actions/admin-telemetry";
+import {
   DOMAIN_LABELS,
   STATUS_DESCRIPTIONS,
   TRACK_LABELS,
@@ -44,6 +55,7 @@ interface AdminConsoleClientProps {
   auditLogs: AuditLogEntry[];
   settings: SettingRow[];
   rubricCriteria?: RubricCriterion[];
+  initialTelemetry?: PlatformTelemetry | null;
 }
 
 const SAMPLE_CSV_TEMPLATE = `track,stage,domain,difficulty,type,stem,code_snippet,option_a,option_b,option_c,option_d,correct,tolerance,explanation
@@ -58,14 +70,19 @@ export function AdminConsoleClient({
   auditLogs,
   settings,
   rubricCriteria = [],
+  initialTelemetry = null,
 }: AdminConsoleClientProps) {
   const [activeTab, setActiveTab] = useState<
-    "applications" | "questions" | "rubrics" | "institutions" | "users" | "audit" | "settings"
+    "applications" | "questions" | "rubrics" | "institutions" | "users" | "audit" | "settings" | "metrics"
   >("applications");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [csvText, setCsvText] = useState<string>("");
   const [feedback, setFeedback] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [signedPreview, setSignedPreview] = useState<{ docId: string; url: string } | null>(null);
+  const [telemetry, setTelemetry] = useState<PlatformTelemetry | null>(initialTelemetry);
+  const [webhookLogs, setWebhookLogs] = useState<OutboundWebhookLogItem[]>([]);
+  const [problemJobs, setProblemJobs] = useState<GradingJobLogItem[]>([]);
+  const [logsLoaded, setLogsLoaded] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const filteredRows = rows.filter((r) =>
@@ -222,12 +239,97 @@ export function AdminConsoleClient({
     });
   }
 
+  function handleSelectMetricsTab() {
+    setActiveTab("metrics");
+    if (!logsLoaded) {
+      startTransition(async () => {
+        const [wRes, gRes] = await Promise.all([
+          fetchRecentWebhooksAction(15),
+          fetchProblemGradingJobsAction(15),
+        ]);
+        if (wRes.ok && wRes.data) setWebhookLogs(wRes.data);
+        if (gRes.ok && gRes.data) setProblemJobs(gRes.data);
+        setLogsLoaded(true);
+      });
+    }
+  }
+
+  function handleFlushWebhooks() {
+    setFeedback(null);
+    startTransition(async () => {
+      const res = await flushWebhooksAction();
+      if (!res.ok) {
+        setFeedback({ type: "err", text: res.error ?? "Flush failed." });
+        return;
+      }
+      const s = res.summary;
+      setFeedback({
+        type: "ok",
+        text: `Flushed webhooks: ${s?.delivered ?? 0} delivered, ${s?.failed ?? 0} retrying, ${s?.deadLetter ?? 0} dead-lettered. Circuit state: ${s?.circuitBreakerState ?? "CLOSED"}.`,
+      });
+      const updated = await fetchRecentWebhooksAction(15);
+      if (updated.ok && updated.data) setWebhookLogs(updated.data);
+    });
+  }
+
+  function handleResetCircuitBreaker() {
+    setFeedback(null);
+    startTransition(async () => {
+      const res = await resetCircuitBreakerAction();
+      if (!res.ok) {
+        setFeedback({ type: "err", text: res.error ?? "Could not reset circuit breaker." });
+        return;
+      }
+      setFeedback({ type: "ok", text: "Circuit breaker successfully reset to CLOSED state." });
+      if (telemetry) {
+        setTelemetry({
+          ...telemetry,
+          circuit_breaker: {
+            ...telemetry.circuit_breaker,
+            state: "CLOSED",
+            failure_count: 0,
+            last_error: null,
+          },
+        });
+      }
+    });
+  }
+
+  function handleRedriveWebhooks(ids: string[]) {
+    setFeedback(null);
+    startTransition(async () => {
+      const res = await redriveWebhooksAction(ids);
+      if (!res.ok) {
+        setFeedback({ type: "err", text: res.error ?? "Could not re-drive webhooks." });
+        return;
+      }
+      setFeedback({ type: "ok", text: `Successfully re-driven ${res.count ?? 0} webhooks back to pending queue.` });
+      const updated = await fetchRecentWebhooksAction(15);
+      if (updated.ok && updated.data) setWebhookLogs(updated.data);
+    });
+  }
+
+  function handleRedriveGradingJobs(ids: string[]) {
+    setFeedback(null);
+    startTransition(async () => {
+      const res = await redriveGradingJobsAction(ids);
+      if (!res.ok) {
+        setFeedback({ type: "err", text: res.error ?? "Could not re-drive grading jobs." });
+        return;
+      }
+      setFeedback({ type: "ok", text: `Successfully re-driven ${res.count ?? 0} grading jobs back to queued status.` });
+      const updated = await fetchProblemGradingJobsAction(15);
+      if (updated.ok && updated.data) setProblemJobs(updated.data);
+    });
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3" role="tablist">
         {(
           [
             { id: "applications", label: `Applications & ID Queue (${rows.length})` },
+            { id: "metrics", label: "Metrics & Telemetry (DLQ / Queues)" },
             { id: "questions", label: `Question Bank & CSV Import (${questions.length})` },
             { id: "rubrics", label: `Rubrics & Anchors (${rubricCriteria.length})` },
             { id: "institutions", label: `Partner Institutions (${institutions.length})` },
@@ -241,7 +343,7 @@ export function AdminConsoleClient({
             role="tab"
             aria-selected={activeTab === tab.id}
             type="button"
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => (tab.id === "metrics" ? handleSelectMetricsTab() : setActiveTab(tab.id))}
             className={`rounded px-3.5 py-2 text-sm font-semibold ${
               activeTab === tab.id
                 ? "bg-slate-900 text-white"
@@ -820,6 +922,348 @@ export function AdminConsoleClient({
               </div>
             </form>
           ))}
+        </section>
+      )}
+
+      {activeTab === "metrics" && (
+        <section className="space-y-6">
+          {/* Circuit Breaker & Controls Banner */}
+          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-bold text-slate-900">
+                    Q-Fellows Integration Circuit Breaker
+                  </h2>
+                  {telemetry?.circuit_breaker.state === "CLOSED" && (
+                    <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                      CLOSED (Healthy)
+                    </span>
+                  )}
+                  {telemetry?.circuit_breaker.state === "OPEN" && (
+                    <span className="rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-800 animate-pulse">
+                      OPEN (Tripped - Dispatch Paused)
+                    </span>
+                  )}
+                  {telemetry?.circuit_breaker.state === "HALF_OPEN" && (
+                    <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                      HALF_OPEN (Testing Canary)
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-slate-600">
+                  Consecutive Failures: {telemetry?.circuit_breaker.failure_count ?? 0} /{" "}
+                  {telemetry?.circuit_breaker.failure_threshold ?? 5} | Cooldown:{" "}
+                  {telemetry?.circuit_breaker.cooldown_seconds ?? 300}s
+                  {telemetry?.circuit_breaker.last_error && (
+                    <span className="block mt-0.5 text-rose-600 font-mono text-[11px]">
+                      Last Error: {telemetry.circuit_breaker.last_error}
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleFlushWebhooks}
+                  disabled={isPending}
+                  className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Flush Outbox Now
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetCircuitBreaker}
+                  disabled={isPending}
+                  className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  Reset Circuit Breaker
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* KPI Summary Cards */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <span className="text-xs font-medium text-slate-500">Total Applicants</span>
+              <p className="mt-1 text-2xl font-bold text-slate-900">
+                {telemetry?.funnel.total_registered ?? rows.length}
+              </p>
+              <span className="text-[11px] text-slate-500">
+                AI: {telemetry?.tracks.ai ?? 0} | IoT: {telemetry?.tracks.iot ?? 0} | Rob:{" "}
+                {telemetry?.tracks.robotics ?? 0}
+              </span>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <span className="text-xs font-medium text-slate-500">Certified Talent</span>
+              <p className="mt-1 text-2xl font-bold text-emerald-600">
+                {telemetry?.funnel.certified ?? 0}
+              </p>
+              <span className="text-[11px] text-slate-500">
+                Elite: {telemetry?.tiers.elite ?? 0} | Pro: {telemetry?.tiers.certified_pro ?? 0} |
+                Cert: {telemetry?.tiers.certified ?? 0}
+              </span>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <span className="text-xs font-medium text-slate-500">Outbound Webhooks DLQ</span>
+              <p className="mt-1 text-2xl font-bold text-slate-900">
+                <span className={telemetry?.webhooks.dead_letter ? "text-rose-600" : ""}>
+                  {telemetry?.webhooks.dead_letter ?? 0}
+                </span>
+                <span className="text-sm font-normal text-slate-500">
+                  {" "}
+                  / {telemetry?.webhooks.total ?? 0} total
+                </span>
+              </p>
+              <span className="text-[11px] text-slate-500">
+                Pending: {telemetry?.webhooks.pending ?? 0} | Delivered:{" "}
+                {telemetry?.webhooks.delivered ?? 0}
+              </span>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <span className="text-xs font-medium text-slate-500">Grader Queue & DLQ</span>
+              <p className="mt-1 text-2xl font-bold text-slate-900">
+                <span className={telemetry?.grader.dead_letter ? "text-rose-600" : ""}>
+                  {telemetry?.grader.dead_letter ?? 0}
+                </span>
+                <span className="text-sm font-normal text-slate-500">
+                  {" "}
+                  / {telemetry?.grader.total ?? 0} total
+                </span>
+              </p>
+              <span className="text-[11px] text-slate-500">
+                Queued: {telemetry?.grader.queued ?? 0} | Running:{" "}
+                {telemetry?.grader.running ?? 0}
+              </span>
+            </div>
+          </div>
+
+          {/* Funnel Progression Bar */}
+          <div className="rounded-lg border border-slate-200 bg-white p-5">
+            <h3 className="text-sm font-bold text-slate-900">Assessment Funnel Progression</h3>
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-6 text-center text-xs">
+              <div className="rounded bg-slate-50 p-2.5 border border-slate-100">
+                <span className="font-semibold text-slate-700">Stage 0</span>
+                <p className="text-base font-bold text-slate-900 mt-0.5">
+                  {telemetry?.funnel.id_approved ?? 0}
+                </p>
+                <span className="text-[10px] text-slate-500">ID Verified</span>
+              </div>
+              <div className="rounded bg-slate-50 p-2.5 border border-slate-100">
+                <span className="font-semibold text-slate-700">Stage 1</span>
+                <p className="text-base font-bold text-slate-900 mt-0.5">
+                  {telemetry?.funnel.s1_passed ?? 0}
+                </p>
+                <span className="text-[10px] text-slate-500">
+                  Avg: {telemetry?.averages.s1_avg ?? 0}%
+                </span>
+              </div>
+              <div className="rounded bg-slate-50 p-2.5 border border-slate-100">
+                <span className="font-semibold text-slate-700">Stage 2</span>
+                <p className="text-base font-bold text-slate-900 mt-0.5">
+                  {telemetry?.funnel.s2_passed ?? 0}
+                </p>
+                <span className="text-[10px] text-slate-500">
+                  Avg: {telemetry?.averages.s2_avg ?? 0}%
+                </span>
+              </div>
+              <div className="rounded bg-slate-50 p-2.5 border border-slate-100">
+                <span className="font-semibold text-slate-700">Stage 3</span>
+                <p className="text-base font-bold text-slate-900 mt-0.5">
+                  {telemetry?.funnel.s3_passed ?? 0}
+                </p>
+                <span className="text-[10px] text-slate-500">
+                  Avg: {telemetry?.averages.s3_avg ?? 0}%
+                </span>
+              </div>
+              <div className="rounded bg-slate-50 p-2.5 border border-slate-100">
+                <span className="font-semibold text-slate-700">Stage 4</span>
+                <p className="text-base font-bold text-slate-900 mt-0.5">
+                  {telemetry?.funnel.s4_passed ?? 0}
+                </p>
+                <span className="text-[10px] text-slate-500">
+                  Avg: {telemetry?.averages.s4_avg ?? 0}%
+                </span>
+              </div>
+              <div className="rounded bg-emerald-50 p-2.5 border border-emerald-100">
+                <span className="font-semibold text-emerald-800">Certified</span>
+                <p className="text-base font-bold text-emerald-900 mt-0.5">
+                  {telemetry?.funnel.certified ?? 0}
+                </p>
+                <span className="text-[10px] text-emerald-700">Passed Overall</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Webhook Delivery & DLQ Table */}
+          <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Outbound Webhook Outbox & Dead Letters
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Events queued for delivery to Q-Fellows Portal
+                </p>
+              </div>
+              {webhookLogs.filter((w) => w.status === "dead_letter" || w.status === "failed")
+                .length > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleRedriveWebhooks(
+                      webhookLogs
+                        .filter((w) => w.status === "dead_letter" || w.status === "failed")
+                        .map((w) => w.id)
+                    )
+                  }
+                  disabled={isPending}
+                  className="rounded bg-rose-600 px-3 py-1 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                >
+                  Re-drive All Failed ({webhookLogs.filter((w) => w.status === "dead_letter" || w.status === "failed").length})
+                </button>
+              )}
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
+                <thead className="bg-slate-50 font-semibold uppercase text-slate-600">
+                  <tr>
+                    <th className="px-4 py-2.5">Event</th>
+                    <th className="px-4 py-2.5">Status</th>
+                    <th className="px-4 py-2.5">Attempts</th>
+                    <th className="px-4 py-2.5">Response</th>
+                    <th className="px-4 py-2.5">Last Error</th>
+                    <th className="px-4 py-2.5">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {webhookLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                        No outbound webhooks found in queue.
+                      </td>
+                    </tr>
+                  ) : (
+                    webhookLogs.map((item) => (
+                      <tr key={item.id}>
+                        <td className="px-4 py-2 font-mono font-medium text-slate-800">
+                          {item.event}
+                        </td>
+                        <td className="px-4 py-2">
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                              item.status === "delivered"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : item.status === "pending"
+                                ? "bg-blue-100 text-blue-800"
+                                : item.status === "failed"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-rose-100 text-rose-800"
+                            }`}
+                          >
+                            {item.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-slate-600">{item.attempts}</td>
+                        <td className="px-4 py-2 text-slate-600">
+                          {item.response_status ?? "—"}
+                        </td>
+                        <td className="px-4 py-2 font-mono text-[11px] text-slate-500 max-w-xs truncate">
+                          {item.last_error ?? "—"}
+                        </td>
+                        <td className="px-4 py-2">
+                          {(item.status === "failed" || item.status === "dead_letter") && (
+                            <button
+                              type="button"
+                              onClick={() => handleRedriveWebhooks([item.id])}
+                              disabled={isPending}
+                              className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                            >
+                              Re-drive
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Grader DLQ Table */}
+          {problemJobs.length > 0 && (
+            <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Grader Worker DLQ (Failed Jobs)
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Jobs requiring manual inspection or re-drive
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRedriveGradingJobs(problemJobs.map((j) => j.id))}
+                  disabled={isPending}
+                  className="rounded bg-rose-600 px-3 py-1 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                >
+                  Re-drive All ({problemJobs.length})
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
+                  <thead className="bg-slate-50 font-semibold uppercase text-slate-600">
+                    <tr>
+                      <th className="px-4 py-2.5">Job ID</th>
+                      <th className="px-4 py-2.5">Kind</th>
+                      <th className="px-4 py-2.5">Mode</th>
+                      <th className="px-4 py-2.5">Status</th>
+                      <th className="px-4 py-2.5">Attempts</th>
+                      <th className="px-4 py-2.5">Error</th>
+                      <th className="px-4 py-2.5">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {problemJobs.map((j) => (
+                      <tr key={j.id}>
+                        <td className="px-4 py-2 font-mono text-slate-700">{j.id.slice(0, 8)}...</td>
+                        <td className="px-4 py-2 font-medium text-slate-800">{j.kind}</td>
+                        <td className="px-4 py-2 text-slate-600">{j.mode}</td>
+                        <td className="px-4 py-2">
+                          <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-800">
+                            {j.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-slate-600">{j.attempts}</td>
+                        <td className="px-4 py-2 font-mono text-[11px] text-rose-600 max-w-xs truncate">
+                          {j.error ?? "—"}
+                        </td>
+                        <td className="px-4 py-2">
+                          <button
+                            type="button"
+                            onClick={() => handleRedriveGradingJobs([j.id])}
+                            disabled={isPending}
+                            className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                          >
+                            Re-drive
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </section>
       )}
 

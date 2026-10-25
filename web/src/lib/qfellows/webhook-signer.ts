@@ -109,3 +109,4 @@ export function verifySignedInviteToken(
     return { valid: false, error: "Corrupted token payload" };
   }
 }
+

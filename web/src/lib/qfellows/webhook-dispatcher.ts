@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeHmacSignature } from "./webhook-signer.ts";
+import {
+  getCircuitBreakerStatus,
+  recordCircuitSuccess,
+  recordCircuitFailure,
+  type CircuitState,
+} from "./circuit-breaker.ts";
 
 export interface OutboundWebhookRow {
   id: string;
@@ -116,11 +122,26 @@ export async function flushOutboundWebhooks(
   delivered: number;
   failed: number;
   deadLetter: number;
+  circuitBreakerState?: CircuitState;
+  circuitBreakerTripped?: boolean;
 }> {
   let supabase = options.supabase;
   if (!supabase) {
     const { createServiceRoleSupabaseClient } = await import("../supabase/server");
     supabase = createServiceRoleSupabaseClient();
+  }
+
+  // Circuit Breaker check
+  const cbStatus = await getCircuitBreakerStatus(supabase);
+  if (!cbStatus.canAttempt) {
+    return {
+      processed: 0,
+      delivered: 0,
+      failed: 0,
+      deadLetter: 0,
+      circuitBreakerState: cbStatus.state,
+      circuitBreakerTripped: true,
+    };
   }
 
   // Fetch pending or failed webhooks whose retry timestamp has arrived
@@ -133,12 +154,19 @@ export async function flushOutboundWebhooks(
     .limit(limit);
 
   if (error || !webhooks || webhooks.length === 0) {
-    return { processed: 0, delivered: 0, failed: 0, deadLetter: 0 };
+    return {
+      processed: 0,
+      delivered: 0,
+      failed: 0,
+      deadLetter: 0,
+      circuitBreakerState: cbStatus.state,
+    };
   }
 
   let deliveredCount = 0;
   let failedCount = 0;
   let deadLetterCount = 0;
+  let currentCbState = cbStatus.state;
 
   for (const item of webhooks as OutboundWebhookRow[]) {
     const dispatchResult = await dispatchSingleWebhook(item, options);
@@ -158,6 +186,10 @@ export async function flushOutboundWebhooks(
           updated_at: nowIso,
         })
         .eq("id", item.id);
+
+      // Record success in circuit breaker
+      const newCb = await recordCircuitSuccess(supabase);
+      currentCbState = newCb.state;
     } else {
       const statusCode = dispatchResult.statusCode;
       const is4xx = typeof statusCode === "number" && statusCode >= 400 && statusCode < 500;
@@ -177,7 +209,10 @@ export async function flushOutboundWebhooks(
           })
           .eq("id", item.id);
       } else {
-        // 5xx server error or network failure: calculate backoff
+        // 5xx server error or network failure: trip circuit breaker if threshold hit
+        const cbConfig = await recordCircuitFailure(dispatchResult.error ?? "Dispatch error", supabase);
+        currentCbState = cbConfig.state;
+
         const { isTerminal, nextRetryDate } = getNextRetryTimestamp(attempts - 1);
         if (isTerminal) {
           failedCount++;
@@ -207,14 +242,20 @@ export async function flushOutboundWebhooks(
             })
             .eq("id", item.id);
         }
+
+        // If circuit breaker tripped to OPEN, abort remainder of the batch immediately
+        if (currentCbState === "OPEN") {
+          break;
+        }
       }
     }
   }
 
   return {
-    processed: webhooks.length,
+    processed: deliveredCount + failedCount + deadLetterCount,
     delivered: deliveredCount,
     failed: failedCount,
     deadLetter: deadLetterCount,
+    circuitBreakerState: currentCbState,
   };
 }

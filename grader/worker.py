@@ -185,17 +185,20 @@ def process_claimed_job(client: GraderClient, job: Dict[str, Any]) -> None:
     except Exception as e:
         err_msg = str(e)
         print(f"[{job_id}] Grading failed: {err_msg}", file=sys.stderr)
+        attempts = claimed.get("attempts", 1)
+        # Isolate to dead_letter if attempts exceed max_attempts
+        final_status = "dead_letter" if attempts >= 3 else "failed"
         try:
             client.rpc("save_job_result", {
                 "p_job_id": job_id,
-                "p_status": "failed",
+                "p_status": final_status,
                 "p_result": {},
                 "p_candidate_feedback": "Automated evaluation encountered an error. Please verify submission format.",
                 "p_component_points": {},
-                "p_error": err_msg,
+                "p_error": f"Attempt {attempts}/3: {err_msg}",
             })
         except Exception as save_err:
-            print(f"[{job_id}] Error saving failed status: {save_err}", file=sys.stderr)
+            print(f"[{job_id}] Error saving {final_status} status: {save_err}", file=sys.stderr)
 
 
 def run_worker_loop(
