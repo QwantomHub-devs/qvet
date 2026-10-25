@@ -31,7 +31,14 @@ Source-of-truth specifications live in [`/docs`](./docs):
 │   ├── migrations/
 │   │   ├── 0001_m1_foundation.sql
 │   │   ├── 0002_m2_exam_engine.sql
-│   │   └── 0003_m3_stage1_and_reviews.sql
+│   │   ├── 0003_m3_stage1_and_reviews.sql
+│   │   ├── 0004_m4_project_and_grader.sql
+│   │   ├── 0005_m5_stage4_results_credentials.sql
+│   │   ├── 0006_security_hardening.sql
+│   │   ├── 0007_qfellows_integration.sql
+│   │   ├── 0008_reliability_and_dlq.sql
+│   │   ├── 0009_m7_iot_track.sql
+│   │   └── 0010_m8_robotics_track.sql
 │   └── tests/
 │       ├── m1_access_and_status.test.sql
 │       ├── m2_exam_engine.test.sql
@@ -42,8 +49,10 @@ Source-of-truth specifications live in [`/docs`](./docs):
 │   │   ├── app/                     # Next.js App Router pages
 │   │   ├── components/              # Accessible, low-bandwidth UI components
 │   │   └── lib/                     # Supabase clients, strict database types, validators
-│   └── tests/                       # Automated unit & PostgreSQL 17 integration test suites
-└── grader/                          # Python 3 Docker grader worker (introduced in M4)
+│   └── tests/                       # Automated unit & PostgreSQL 17 integration test suites (M1-M8)
+└── grader/                          # Python 3 Docker grader worker with track simulators
+    ├── graders/                     # Evaluation modules (predictions, retrieval, iot_simulator, robotics_simulator)
+    └── tests/                       # Python unit tests for all track graders
 ```
 
 ---
@@ -309,3 +318,54 @@ The **"Metrics & Telemetry"** console tab surfaces real-time system health:
 - **`scripts/cleanup_expired_storage.py`:** Automates deletion of Stage 1 videos (> 60 days) and verified ID images to stay within free-tier storage caps.
 - **`scripts/keep_alive.py`:** Scheduled health probe pinging Supabase PostgREST to prevent idle project pausing.
 - **`scripts/export_database.py`:** Automated JSON/SQL disaster recovery backup script dumping critical tables to `backups/`.
+
+---
+
+## IoT Track Specification & Virtual Peripherals (Milestone 7)
+
+Per `docs/blueprint-iot.md`, Milestone 7 enables the end-to-end certification pipeline for the **Internet of Things (IoT) Track**:
+
+- **Stage 1 (Foundation Screen):**
+  - Rotating written prompts (`s1_text`): Sensor workbench vs field drift, push-button chattering vs debouncing, I2C bus capacitance on extended cables, and deep-sleep quiescent current leakage.
+  - Rotating video prompts (`s1_video`): 30% fleet disconnection triage, post-thunderstorm agricultural node diagnosis, OTA firmware bricking rollback, and motor activation ADC noise isolation.
+  - Logic & Numeracy: 15 questions across `logic_patterns` (5), `probability_numeracy` (5), and `charts_data` (5).
+- **Stage 2 (Technical Exam):**
+  - 40 timed questions across 6 IoT domains: `electronics_hardware` (6), `embedded_programming` (8), `buses_wireless` (8), `iot_cloud_architecture` (6), `security_reliability` (6), and `power_debugging_deployment` (6).
+  - Difficulty mix: 16 easy (40%), 16 medium (40%), 8 hard (20%). Includes circuit calculation items with numeric tolerance (e.g. voltage dividers $\pm 0.05$ V) and embedded C ISR code reading.
+- **Stage 3 (Practical Project - Virtual Device Simulator):**
+  - **Scenario A:** Cold-Chain Vaccine Transport Monitor (`iot-stage3-starter-kit.zip`).
+  - **Simulation Engine (`grader/graders/iot_simulator.py`):** Pure Python virtual ESP32 board and sensor suite (`read_temperature`, `read_humidity`, `read_door`, `set_buzzer`, `sim_sleep`).
+  - **Evaluated Components (65 auto pts + 35 reviewer pts = 100 pts):**
+    - `A1_functional` (20 pts): Normal periodic telemetry sampling, threshold breach buzzer alarms, and configuration updates.
+    - `A2_resilience` (15 pts): Rejection of single transient sensor spikes (requires 3 consecutive breaches to alarm), 120-second simulated network outage memory buffering with ordered flush on reconnect, and malformed configuration safety.
+    - `A3_power` (10 pts): Measured simulated sleep duty cycle ($\ge 80\%$ low-power waiting vs busy loops).
+    - `B1_ingestion` (10 pts): Cloud ingestion deduplication, chronological reordering, and timestamp sorting.
+    - `B2_alert` (10 pts): Cloud alert engine firing on sustained temperature breaches while ignoring transient noise.
+    - Reviewer rubrics: Part C (Hardware design & pin mapping, 15 pts), Part D (Code quality & security hygiene, 10 pts), and Part E (Write-up & analytical maturity, 10 pts).
+  - **Pass Thresholds:** Total $\ge 60$ points, with Part A $\ge 18/45$ (40%) and Part B $\ge 8/20$ (40%).
+
+---
+
+## Robotics Track Specification & 2D Kinematic Simulator (Milestone 8)
+
+Per `docs/blueprint-robotics.md`, Milestone 8 enables the end-to-end certification pipeline for the **Robotics Track**:
+
+- **Stage 1 (Foundation Screen):**
+  - Rotating written prompts (`s1_text`): URDF transform trees & frame orientation, PID velocity tuning & integral windup, LiDAR specular reflection on polished floors, and ROS 2 single-threaded executor starvation.
+  - Rotating video prompts (`s1_video`): Safety laser zone vs hardware E-stop triage, odometry drift on epoxy flooring & EKF sensor fusion, sim-to-real trajectory discrepancies, and multi-robot narrow aisle deadlock resolution.
+  - Logic & Numeracy: 15 questions across `logic_patterns` (5), `probability_numeracy` (5), and `charts_data` (5).
+- **Stage 2 (Technical Exam):**
+  - 40 timed questions across 6 Robotics domains: `tooling_math_ros` (6), `control_kinematics` (8), `perception_estimation` (8), `navigation_planning` (6), `hardware_safety` (6), and `deployment_lifecycle` (6).
+  - Difficulty mix: 16 easy (40%), 16 medium (40%), 8 hard (20%). Includes differential drive kinematics calculations ($v = \frac{r}{2}(\omega_R + \omega_L)$, tolerance $\pm 0.05$ m/s) and ROS 2 Twist / TF2 code reading.
+- **Stage 3 (Practical Project - 2D Kinematic Simulator `robot_sim`):**
+  - **Scenario A:** Autonomous Warehouse Delivery Robot & ArUco Docking (`robotics-stage3-starter-kit.zip`).
+  - **Simulation Engine (`grader/graders/robotics_simulator.py`):** Pure Python 2D unicycle kinematic integrator ($\dot{x} = v \cos\theta, \dot{y} = v \sin\theta, \dot{\theta} = \omega$), multi-ray 2D LiDAR raycaster, and ArUco marker pose estimator.
+  - **Multi-Seed Median Scoring (Section 6.3):** Graded scenarios are simulated across 3 distinct seeds (`42, 101, 202`) with randomized obstacle offsets, taking the component-wise **median score** across runs to ensure evaluation repeatability.
+  - **Evaluated Components (65 auto pts + 35 reviewer pts = 100 pts):**
+    - `A1_mission` (20 pts): Waypoint traversal and docking station arrival within $\le 0.25$ m position tolerance and time limit.
+    - `A2_safety` (15 pts): Zero obstacle collisions, strict velocity limit enforcement ($v \le 1.0$ m/s), and immediate emergency stop upon simulated LiDAR sensor stream loss.
+    - `A3_control` (10 pts): Trajectory smoothness, bounded angular jitter, and minimal cross-track error.
+    - `B1_perception` (10 pts): ArUco marker pose detection accuracy against ground-truth docking station.
+    - `B2_transforms` (10 pts): Valid SE(2) transform tree hierarchy (`odom` $\rightarrow$ `base_link` $\rightarrow$ `camera_link` / `laser_frame`).
+    - Reviewer rubrics: Part C (Architecture & safety review, 15 pts), Part D (Code quality & ROS 2 conventions, 10 pts), and Part E (Write-up & analytical maturity, 10 pts).
+  - **Pass Thresholds:** Total $\ge 60$ points, with Part A $\ge 18/45$ (40%) and Part B $\ge 8/20$ (40%).

@@ -156,3 +156,4 @@ export async function resetCircuitBreaker(
 ): Promise<CircuitBreakerConfig> {
   return recordCircuitSuccess(supabaseClient);
 }
+

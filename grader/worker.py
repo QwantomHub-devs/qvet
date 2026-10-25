@@ -20,6 +20,8 @@ from typing import Any, Dict, Optional, Tuple
 
 from grader.graders.predictions import score_predictions
 from grader.graders.retrieval import score_retrieval
+from grader.graders.iot_simulator import score_iot_project
+from grader.graders.robotics_simulator import score_robotics_project
 
 
 DEFAULT_SUPABASE_URL = os.environ.get("SUPABASE_URL", "http://127.0.0.1:54321")
@@ -135,17 +137,32 @@ def grade_job_payload(
         } if mode == "final" else {}
         return res, feedback, component_points
 
+    elif part in ("device_sim", "iot_firmware", "iot_cloud"):
+        gt = json.loads(ground_truth_content) if isinstance(ground_truth_content, str) and ground_truth_content.strip().startswith("{") else ground_truth_content
+        res = score_iot_project(candidate_content, gt, mode=mode)
+        feedback = res["feedback"]
+        component_points = res["component_points"] if mode == "final" else {}
+        return res, feedback, component_points
+
+    elif part in ("robot_sim", "robotics_control", "robotics_perception"):
+        gt = json.loads(ground_truth_content) if isinstance(ground_truth_content, str) and ground_truth_content.strip().startswith("{") else ground_truth_content
+        res = score_robotics_project(candidate_content, gt, mode=mode)
+        feedback = res["feedback"]
+        component_points = res["component_points"] if mode == "final" else {}
+        return res, feedback, component_points
+
     else:
         raise ValueError(f"Unsupported grader part: {part}")
 
 
 def process_claimed_job(client: GraderClient, job: Dict[str, Any]) -> None:
     job_id = job["job_id"]
-    part = job["part"]
+    part = job.get("kind") or job.get("part")
     mode = job["mode"]
-    file_path = job.get("file_path", "")
-    practice_data_path = job.get("practice_data_path")
-    hidden_test_path = job.get("hidden_test_path")
+    file_path = job.get("submission_file_path") or job.get("file_path", "")
+    hidden_paths = job.get("scenario_hidden_paths") or {}
+    practice_data_path = job.get("practice_data_path") or hidden_paths.get("practice_data_path")
+    hidden_test_path = job.get("hidden_test_path") or hidden_paths.get("hidden_test_path")
 
     print(f"[{job_id}] Processing {mode} job for part '{part}' (file: {file_path})")
 

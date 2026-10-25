@@ -349,12 +349,31 @@ export interface ReviewerQueueItem {
 }
 
 export const DOMAIN_LABELS: Record<string, string> = {
+  // AI Stage 2 Domains
   python_data: "Python & Data Handling",
   stats_ml: "Statistics & ML Fundamentals",
   eval_debugging: "Evaluation & Debugging",
   dl_nlp: "Deep Learning & NLP Basics",
   llm_apps: "LLM Applications",
   eng_practice: "Engineering Practice",
+
+  // IoT Stage 2 Domains
+  electronics_hardware: "Electronics & Hardware Fundamentals",
+  embedded_programming: "Embedded Programming",
+  buses_wireless: "Buses & Wireless Networks",
+  iot_cloud_architecture: "IoT Cloud Architecture",
+  security_reliability: "Security & Reliability",
+  power_debugging_deployment: "Power, Debugging & Deployment",
+
+  // Robotics Stage 2 Domains
+  tooling_math_ros: "Tooling, Math & ROS 2 Basics",
+  control_kinematics: "Kinematics & Control",
+  perception_estimation: "Perception & State Estimation",
+  navigation_planning: "Navigation & Motion Planning",
+  hardware_safety: "Hardware Interfaces & Safety",
+  deployment_lifecycle: "Deployment & Node Lifecycle",
+
+  // Common Stage 1 Domains
   logic_patterns: "Logic & Patterns",
   probability_numeracy: "Probability & Numeracy",
   charts_data: "Reading Charts & Data",
