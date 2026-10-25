@@ -81,6 +81,9 @@ cp .env.example web/.env.local
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public          | Local Supabase anonymous/public JWT key                                                                                                         |
 | `SUPABASE_SERVICE_ROLE_KEY`     | **Server-only** | Used only on the server to issue 60-second signed ID URLs after `log_admin_id_view` writes to `audit_log`. Never exposed to the browser bundle. |
 | `NEXT_PUBLIC_SITE_URL`          | Public          | Local web app origin (`http://localhost:3000`)                                                                                                  |
+| `QFELLOWS_WEBHOOK_URL`          | **Server-only** | Q-Fellows endpoint URL for outbound webhooks (`https://<qfellows-domain>/api/webhooks/qtalent`)                                                 |
+| `QFELLOWS_WEBHOOK_SECRET`       | **Server-only** | Shared secret used to sign outbound webhooks and verify candidate invite tokens (`HMAC-SHA256`)                                                 |
+| `QFELLOWS_API_KEY`              | **Server-only** | API key expected from Q-Fellows when invoking `POST /api/v1/external/candidates`                                                                |
 
 ### 3. Install Dependencies & Run the Web App
 
@@ -240,3 +243,38 @@ A comprehensive security audit and penetration review was conducted across 8 sec
 - **Application-Level Rate Limiting:** In-memory sliding-window rate limiters protect registration (`signUpAction`), login (`signInAction`), and public credential verification (`/verify/[code]`).
 - **Binary Magic-Byte Inspection:** Upload endpoints validate binary headers (JPEG, PNG, WebP, PDF, WebM, MP4) rather than relying solely on client-provided MIME strings.
 - **Penetration Test Suite:** Automated attack simulations cover 22 attack scenarios (`npm --prefix web test`), verifying RLS enforcement, status/score immutability, and blind reviewer isolation.
+
+---
+
+## Q-Fellows Portal Integration & Webhook Engine
+
+The platform integrates with the **Q-Fellows Portal** (`QwantomAfrica Fellow & Employer Portal`) via an authenticated server-to-server REST and transactional webhook contract:
+
+### 1. Inbound Candidate Intake (`POST /api/v1/external/candidates`)
+- **Authentication & Replay Protection:** Authenticated via `X-QTalent-Api-Key` and timing-safe `HMAC-SHA256` signature verification (`X-QTalent-Signature`). Replay defense rejects requests with timestamps older than 300 seconds (`X-QTalent-Timestamp`).
+- **Strict Idempotency:** The `external_application_id` is indexed with a PostgreSQL `UNIQUE` constraint (`idx_applications_external_id`). Duplicate dispatches return the existing `vetting_application_id` and signed invite URL with HTTP `200 OK` rather than duplicating records or conflicting exam sessions.
+- **Auto-Provisioning:** Creates candidate account stubs in `auth.users` and `public.profiles`, registers the application for track (`ai`, `iot`, `robotics`), links cohort code (e.g. `QF-2026-C1`), and returns a tamper-proof signed invite link.
+
+### 2. Candidate Onboarding Entry (`/start?app=...&token=...`)
+- Candidates arriving from Q-Fellows hit `/start` with a cryptographically signed HMAC token embedding their `applicationId`, `email`, `track`, and expiration timestamp.
+- Validates token authenticity and automatically transitions the candidate to identity verification or active stage dashboard.
+
+### 3. Outbound Transactional Webhooks (`public.outbound_webhooks`)
+Outbound events are queued atomically within database transactions via triggers on application status changes and credential lifecycle:
+- `application.approved`: Emitted when government ID verification succeeds.
+- `stage.passed`: Emitted on passing Stages 1, 2, 3, or 4 with stage scores and breakdown metrics.
+- `stage.failed`: Emitted when a candidate enters `retake_wait` or is rejected, including `reapply_eligible_at` (Now + 60 days).
+- `credential.issued`: Emitted when a credential is confirmed, delivering full scorecard metrics, tier, and verifiable `verify_code`.
+- `credential.revoked`: Emitted immediately upon integrity breach or administrative revocation.
+
+### 4. Dispatcher Protocol & Retry Engine
+- **Idempotency Key:** Every outbound event carries a deterministic `idempotency_key` (both in body payload and HTTP `Idempotency-Key` header), e.g. `evt_stage.passed_<app_id>_s2_s2_passed`.
+- **Exponential Backoff:** Retries transient 5xx server errors and network drops according to a defined schedule with random 10% jitter:
+  - Attempt 1: 5 seconds
+  - Attempt 2: 30 seconds
+  - Attempt 3: 2 minutes
+  - Attempt 4: 10 minutes
+  - Attempt 5: 1 hour (terminal attempt)
+- **Dead-Letter Handling (Rule 6.2):** HTTP 4xx client errors (bad request, invalid signature, not found) are marked terminal `dead_letter` immediately with zero retries.
+- **Queue Flushing (`/api/internal/dispatch-webhooks`):** Triggerable by cron or internal background workers to flush pending outbox events.
+- **NDPA Privacy Guarantee:** Webhook payloads contain strictly zero private storage bucket paths, zero NIN/BVN identifiers, and zero raw video links.

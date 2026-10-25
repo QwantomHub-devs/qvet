@@ -55,3 +55,4 @@ export function isValidVideoBytes(buffer: Uint8Array): boolean {
 
   return false;
 }
+
