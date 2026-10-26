@@ -508,3 +508,4 @@ def evaluate_iot_submission(
 ) -> Dict[str, Any]:
     """Compatibility alias for score_iot_project."""
     return score_iot_project(submission_content, scenario_config)
+

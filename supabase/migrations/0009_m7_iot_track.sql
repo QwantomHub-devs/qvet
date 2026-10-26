@@ -870,3 +870,4 @@ set criterion = excluded.criterion,
     weight = excluded.weight,
     anchors = excluded.anchors,
     sort_order = excluded.sort_order;
+

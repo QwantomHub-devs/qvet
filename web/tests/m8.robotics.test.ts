@@ -483,3 +483,4 @@ describe("Milestone 8: Robotics Track End-to-End Test Suite", () => {
     assert.equal(Number(stage3Res.rows[0]!.percent), 97.0);
   });
 });
+
